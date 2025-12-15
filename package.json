@@ -1,0 +1,39 @@
+{
+	"name": "drawballz_simulation_v2",
+	"version": "0.0.1",
+	"private": true,
+	"type": "commonjs",
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"dev": "node --loader ts-node/esm src/server.ts",
+		"server": "npm run build && node dist/src/server.js",
+		"spec:pdf": "node scripts/compile_spec_pdf.js",
+		"test:counts": "npm run build && node dist/src/test/count_consistency.js",
+		"test:maskcap": "npm run build && node dist/src/test/mask_cap.js",
+		"test:range": "npm run build && node dist/src/test/range_usage.js",
+		"test:maskdist": "npm run build && node dist/src/test/mask_distribution.js",
+		"test:randomization": "npm run build && node dist/src/test/randomization.js",
+		"test:prizeprec": "npm run build && node dist/src/test/prize_precision.js",
+		"test:autortp": "npm run build && node dist/src/test/auto_tune_rtp.js",
+		"test:autoconsistency": "npm run build && node dist/src/test/auto_tune_consistency.js",
+		"test:volatility": "npm run build && node dist/src/test/rtp_volatility.js",
+		"test:defaultcap": "npm run build && node dist/src/test/default_mask_cap.js",
+		"test:stepbound": "npm run build && node dist/src/test/rtp_step_bound.js",
+		"test:betrevenue": "npm run build && node dist/src/test/bet_revenue.js",
+		"test:perpayouts": "npm run build && node dist/src/test/per_player_payouts.js",
+		"test:modalmask": "npm run build && node dist/src/test/payouts_mask_filter_consistency.js",
+		"test:all": "npm run build && node dist/src/test/mask_cap.js && node dist/src/test/range_usage.js && node dist/src/test/count_consistency.js && node dist/src/test/mask_distribution.js && node dist/src/test/randomization.js && node dist/src/test/prize_precision.js && node dist/src/test/auto_tune_rtp.js && node dist/src/test/auto_tune_consistency.js && node dist/src/test/rtp_volatility.js && node dist/src/test/rtp_step_bound.js && node dist/src/test/default_mask_cap.js && node dist/src/test/bet_revenue.js && node dist/src/test/per_player_payouts.js"
+	},
+	"dependencies": {
+		"express": "^4.19.2"
+	},
+	"devDependencies": {
+		"@types/express": "^4.17.21",
+		"@types/node": "^20.11.17",
+		"pdfkit": "^0.17.2",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.6.3",
+		"vite": "^7.3.0"
+	}
+}

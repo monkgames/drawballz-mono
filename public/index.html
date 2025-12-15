@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Drawballz | OpenRNG</title>
+		<style>
+			* {
+				box-sizing: border-box;
+			}
+			html,
+			body {
+				height: 100%;
+				overflow-x: hidden;
+			}
+			:root {
+				--bg: #f6f7fb;
+				--card-bg: #fff;
+				--border: #e5e7eb;
+				--text: #111827;
+				--muted: #6b7280;
+				--primary: #2563eb;
+			}
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 0;
+				color: var(--text);
+				background: var(--bg);
+			}
+			.container {
+				width: 100%;
+				max-width: 1200px;
+				margin: 0 auto;
+				padding: 16px;
+			}
+			@media (min-width: 1600px) {
+				.container {
+					max-width: 1400px;
+				}
+			}
+			.dashboard {
+				display: grid;
+				grid-template-columns: 360px 360px minmax(0, 1fr);
+				gap: 12px;
+				margin-top: 12px;
+			}
+			.span-2 {
+				grid-column: span 2;
+			}
+			@media (max-width: 1400px) {
+				.dashboard {
+					grid-template-columns: 360px minmax(0, 1fr);
+				}
+				.span-2 {
+					grid-column: auto;
+				}
+			}
+			@media (max-width: 900px) {
+				.dashboard {
+					grid-template-columns: 1fr;
+				}
+				.span-2 {
+					grid-column: auto;
+				}
+			}
+			.panel-col {
+				display: grid;
+				grid-auto-rows: min-content;
+				gap: 12px;
+				min-width: 0;
+			}
+			.panel-col.span-2 {
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+			}
+			.row {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px 12px;
+				align-items: center;
+				margin-bottom: 8px;
+			}
+			.card.compact {
+				padding: 10px;
+			}
+			.card.compact .section-title {
+				font-size: 14px;
+			}
+			.card.compact .sub-title {
+				font-size: 12px;
+			}
+			.card.compact .small {
+				font-size: 10px;
+			}
+			.card.compact .row label {
+				min-width: 120px;
+				font-size: 12px;
+			}
+			.card.compact .row.form-row {
+				grid-template-columns: minmax(110px, 160px) minmax(0, 1fr);
+			}
+			.row label {
+				color: var(--muted);
+				font-size: 13px;
+				min-width: 160px;
+			}
+			.row.form-row {
+				display: grid;
+				grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
+				column-gap: 12px;
+				row-gap: 8px;
+				align-items: center;
+			}
+			.row.form-row label {
+				min-width: 0;
+			}
+			.row.form-row input[type='number'],
+			.row.form-row input[type='text'],
+			.row.form-row select {
+				width: 100%;
+				max-width: 100%;
+				min-width: 0;
+			}
+			.row.form-row > span,
+			.row.form-row > button {
+				grid-column: 1 / span 2;
+			}
+			button {
+				padding: 8px 12px;
+				cursor: pointer;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				background: var(--card-bg);
+				color: var(--text);
+				transition: background 0.15s ease, border-color 0.15s ease;
+			}
+			button:hover {
+				background: #f8fafc;
+				border-color: #d1d5db;
+			}
+			button:disabled {
+				opacity: 0.6;
+				cursor: not-allowed;
+			}
+			.btn-primary {
+				background: var(--primary);
+				color: #fff;
+				border-color: var(--primary);
+			}
+			.btn-primary:hover {
+				background: #1d4ed8;
+				border-color: #1d4ed8;
+			}
+			input[type='number'] {
+				flex: 1 1 160px;
+				max-width: 100%;
+				padding: 6px 8px;
+				border: 1px solid var(--border);
+				border-radius: 6px;
+				background: #fff;
+				color: var(--text);
+			}
+			input[type='text'] {
+				flex: 1 1 220px;
+				max-width: 100%;
+				padding: 6px 8px;
+				border: 1px solid var(--border);
+				border-radius: 6px;
+				background: #fff;
+				color: var(--text);
+			}
+			select {
+				flex: 1 1 180px;
+				max-width: 100%;
+				padding: 6px 8px;
+				border: 1px solid var(--border);
+				border-radius: 6px;
+				background: #fff;
+				color: var(--text);
+			}
+			/* Batch card UX helpers */
+			.inline-3 {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 8px 12px;
+				align-items: center;
+			}
+			.inline-2 {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 8px 12px;
+				align-items: center;
+			}
+			.button-group {
+				display: grid;
+				grid-auto-flow: column;
+				grid-auto-columns: minmax(80px, max-content);
+				gap: 6px;
+				align-items: center;
+				justify-content: start;
+			}
+			.split-actions {
+				display: grid;
+				grid-template-columns: 1fr 140px 140px;
+				gap: 8px;
+				align-items: center;
+			}
+			.batch-note {
+				font-size: 12px;
+				color: var(--muted);
+			}
+			.batch-card .section-title {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+			}
+			.batch-card .section-title .mini {
+				font-weight: 500;
+				font-size: 12px;
+				color: var(--muted);
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+				gap: 12px;
+				margin-top: 12px;
+			}
+			.card {
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				padding: 16px;
+				background: var(--card-bg);
+				box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+				min-width: 0;
+			}
+			.card-section {
+				margin-top: 8px;
+				padding-top: 8px;
+				border-top: 1px solid var(--border);
+			}
+			.section-title {
+				margin: 0 0 8px 0;
+				font-weight: 600;
+				font-size: 18px;
+			}
+			.sub-title {
+				font-weight: 600;
+				margin-bottom: 6px;
+				font-size: 15px;
+			}
+			.small {
+				color: var(--muted);
+				font-size: 12px;
+			}
+			.badge {
+				display: inline-block;
+				padding: 4px 8px;
+				border-radius: 12px;
+				color: #fff;
+				font-weight: 600;
+				margin-right: 6px;
+				font-size: 12px;
+			}
+			.bg-G {
+				background: #2ecc71;
+			}
+			.bg-P {
+				background: #ff69b4;
+			}
+			.bg-O {
+				background: #f39c12;
+			}
+			.bg-Y {
+				background: #f1c40f;
+				color: #222;
+			}
+			.bg-B {
+				background: #3498db;
+			}
+			.alert {
+				padding: 10px 12px;
+				border-radius: 6px;
+				background: #ffe7e7;
+				color: #a33;
+				margin: 10px 0;
+				display: none;
+			}
+			.outcome {
+				line-height: 1.6;
+				word-break: break-word;
+			}
+			.controls {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+				gap: 8px;
+			}
+			@media (max-width: 640px) {
+				.controls {
+					grid-template-columns: 1fr;
+				}
+				button {
+					width: 100%;
+				}
+			}
+			@media (max-width: 700px) {
+				.row label {
+					min-width: 100%;
+					display: block;
+				}
+				.row input[type='number'],
+				.row input[type='text'],
+				.row select,
+				.row button {
+					flex: 1 1 100%;
+					max-width: 100%;
+				}
+				.row.form-row {
+					grid-template-columns: 1fr;
+				}
+				.row.form-row > span,
+				.row.form-row > button {
+					grid-column: auto;
+				}
+			}
+			@media (max-width: 900px) {
+				.panel-col.span-2 {
+					grid-template-columns: 1fr;
+				}
+			}
+			.table-wrap {
+				overflow-x: auto;
+				overflow-y: auto;
+				-webkit-overflow-scrolling: touch;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				margin-top: 8px;
+				max-width: 100%;
+				max-height: 60vh;
+			}
+			.metrics-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+				gap: 8px 12px;
+			}
+			@media (max-width: 640px) {
+				.metrics-grid {
+					grid-template-columns: 1fr;
+				}
+			}
+			.metric {
+				padding: 8px;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				background: #fff;
+			}
+			.loader {
+				position: fixed;
+				top: 12px;
+				right: 12px;
+				width: 22px;
+				height: 22px;
+				border: 3px solid #d1d5db;
+				border-top-color: var(--primary);
+				border-radius: 50%;
+				animation: spin 0.8s linear infinite;
+				z-index: 1000;
+				display: none;
+			}
+			@keyframes spin {
+				to {
+					transform: rotate(360deg);
+				}
+			}
+			.modal-overlay {
+				position: fixed;
+				inset: 0;
+				background: rgba(17, 24, 39, 0.5);
+				display: none;
+				align-items: center;
+				justify-content: center;
+				z-index: 2000;
+				padding: 16px;
+			}
+			.modal-content {
+				width: 100%;
+				max-width: 800px;
+				background: var(--card-bg);
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+				padding: 16px;
+			}
+			.players-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+				gap: 12px;
+			}
+			.card.compact {
+				overflow: visible;
+			}
+			.subcard {
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				padding: 8px;
+				background: #fff;
+				min-width: 0;
+			}
+			table {
+				width: 100%;
+				border-collapse: collapse;
+				max-width: 100%;
+			}
+			thead th {
+				background: #f3f4f6;
+			}
+			th,
+			td {
+				border: 1px solid var(--border);
+				padding: 6px 8px;
+				text-align: left;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<h1>🎯 Drawballz | OpenRNG</h1>
+			<div class="small">Fair, transparent, and fun simulations — open randomness you can tune.</div>
+			<div id="status">Server: checking…</div>
+			<div id="loader" class="loader"></div>
+			<div id="alert" class="alert"></div>
+			<div class="row" style="margin-top:8px; gap:6px">
+				<button id="tabNavRng" class="btn-primary">RNG Simulator</button>
+				<button id="tabNavRules">Game Rules</button>
+			</div>
+			<div id="tabRNG">
+			<div class="dashboard">
+				<div class="panel-col span-2">
+					<div class="card compact">
+						<div class="section-title">🎯 Epoch Settings</div>
+						<div class="card-section">
+							<div class="sub-title">
+								🎰 Winning Mask Probabilities
+							</div>
+							<div class="small">
+								Set the chance that the mask has 0–5 balls
+							</div>
+							<div class="row form-row">
+								<label>Max mask size 📏</label
+								><input
+									type="number"
+									id="maxMaskSize"
+									value="5"
+									min="0"
+									max="5"
+									step="1" />
+							</div>
+							<div class="row form-row">
+								<label>Mask size: 0 balls 0️⃣</label
+								><input
+									type="number"
+									id="p0"
+									value="0"
+									step="0.01"
+									min="0"
+									max="1" />
+								<label>Mask size: 1 ball 1️⃣</label
+								><input
+									type="number"
+									id="p1"
+									value="0.00"
+									step="0.01"
+									min="0"
+									max="1" />
+								<label>Mask size: 2 balls 2️⃣</label
+								><input
+									type="number"
+									id="p2"
+									value="0.20"
+									step="0.01"
+									min="0"
+									max="1" />
+								<label>Mask size: 3 balls 3️⃣</label
+								><input
+									type="number"
+									id="p3"
+									value="0.30"
+									step="0.01"
+									min="0"
+									max="1" />
+								<label>Mask size: 4 balls 4️⃣</label
+								><input
+									type="number"
+									id="p4"
+									value="0.30"
+									step="0.01"
+									min="0"
+									max="1" />
+								<label>Mask size: 5 balls 5️⃣</label
+								><input
+									type="number"
+									id="p5"
+									value="0.20"
+									step="0.01"
+									min="0"
+									max="1" />
+							</div>
+							<div class="row">
+								<label>Presets 🎛️</label>
+								<button id="probUniform">Uniform</button>
+								<button id="probLow">Favor small</button>
+								<button id="probMid">Favor mid</button>
+								<button id="probHigh">Favor large</button>
+								<button id="probZero">Zero mask</button>
+							</div>
+							<div class="row">
+								<label>My preset 💾</label>
+								<input
+									type="text"
+									id="probPresetName"
+									placeholder="Preset name" />
+								<button id="saveProbPreset">Save preset</button>
+								<select id="probPresetSelect"></select>
+								<button id="loadProbPreset">Load</button>
+								<button id="setDefaultProbPreset">
+									Set as default
+								</button>
+							</div>
+							<div class="row form-row">
+								<label>Epoch seed 🔑</label
+								><input type="text" id="seed" value="epoch-1" />
+							</div>
+						</div>
+						<div class="card-section">
+							<div class="sub-title">
+								🏆 Prizes by Exact Matches
+							</div>
+							<div class="small">
+								Enter integer multipliers for each match count.
+								Prizes = ticket price × value, shown as X (e.g., 10X).
+							</div>
+							<div class="row form-row">
+								<label>0 matches 0️⃣ (X)</label
+								><input
+									type="number"
+									id="f0"
+									value="0"
+									step="1"
+									min="0" />
+								<label>1 exact match 1️⃣ (X)</label
+								><input
+									type="number"
+									id="f1"
+									value="10"
+									step="1"
+									min="0" />
+								<label>2 exact matches 2️⃣ (X)</label
+								><input
+									type="number"
+									id="f2"
+									value="20"
+									step="1"
+									min="0" />
+								<label>3 exact matches 3️⃣ (X)</label
+								><input
+									type="number"
+									id="f3"
+									value="50"
+									step="1"
+									min="0" />
+								<label>4 exact matches 4️⃣ (X)</label
+								><input
+									type="number"
+									id="f4"
+									value="200"
+									step="1"
+									min="0" />
+								<label>5 exact matches 5️⃣ (X)</label
+								><input
+									type="number"
+									id="f5"
+									value="1000"
+									step="1"
+									min="0" />
+							</div>
+						</div>
+					</div>
+					<div class="card compact">
+						<div class="section-title">👥 Players</div>
+						<div class="small">
+							Each player picks one number per color. Neutralized
+							colors do not count.
+						</div>
+						<div class="players-grid">
+							<div class="subcard">
+								<div class="sub-title">👤 Player A</div>
+								<div class="row form-row">
+									<label>G</label
+									><input
+										type="number"
+										id="aG"
+										value="0"
+										min="0"
+										max="9" />
+									<label>P</label
+									><input
+										type="number"
+										id="aP"
+										value="1"
+										min="0"
+										max="9" />
+									<label>O</label
+									><input
+										type="number"
+										id="aO"
+										value="2"
+										min="0"
+										max="9" />
+									<label>Y</label
+									><input
+										type="number"
+										id="aY"
+										value="3"
+										min="0"
+										max="9" />
+									<label>B</label
+									><input
+										type="number"
+										id="aB"
+										value="4"
+										min="0"
+										max="9" />
+								</div>
+								<div class="row">
+									<label>Bet amount 💵</label
+									><input
+										type="number"
+										id="betA"
+										value="1"
+										min="0.01"
+										step="0.01" />
+								</div>
+							</div>
+							<div class="subcard">
+								<div class="sub-title">👤 Player B</div>
+								<div class="row form-row">
+									<label>G</label
+									><input
+										type="number"
+										id="bG"
+										value="5"
+										min="0"
+										max="9" />
+									<label>P</label
+									><input
+										type="number"
+										id="bP"
+										value="6"
+										min="0"
+										max="9" />
+									<label>O</label
+									><input
+										type="number"
+										id="bO"
+										value="7"
+										min="0"
+										max="9" />
+									<label>Y</label
+									><input
+										type="number"
+										id="bY"
+										value="8"
+										min="0"
+										max="9" />
+									<label>B</label
+									><input
+										type="number"
+										id="bB"
+										value="9"
+										min="0"
+										max="9" />
+								</div>
+								<div class="row">
+									<label>Bet amount 💵</label
+									><input
+										type="number"
+										id="betB"
+										value="1"
+										min="0.01"
+										step="0.01" />
+								</div>
+							</div>
+						</div>
+						<div class="row controls" style="margin-top: 6px">
+							<button id="randA">Randomize A</button>
+							<button id="randB">Randomize B</button>
+							<button id="randBoth">Randomize Both</button>
+							<button id="swapPlayers">Swap A ↔ B</button>
+							<button id="simulate" class="btn-primary">
+								▶️ Simulate Match
+							</button>
+						</div>
+					</div>
+				</div>
+				<div class="panel-col">
+				<div class="card batch-card">
+					<div class="section-title">
+						<span>📊 Batch Simulation</span>
+						<span class="mini">Quick presets below</span>
+					</div>
+					<div class="small">
+						Run many simulations to observe metrics over N repeats.
+					</div>
+					<div class="row" style="margin-top:8px">
+						<label>Enable Autofine-tune 🤖</label
+						><input type="checkbox" id="enableAutoTune" />
+						<label>Desired RTP (%) 🎯</label
+						><input
+							type="number"
+							id="desiredRTP"
+							value="98"
+							min="1"
+							max="99.99"
+							step="0.1" />
+						<button id="autoTuneRTP" class="btn-primary">
+							🔧 Autofine-tune
+						</button>
+					</div>
+					<div class="row form-row">
+						<label>Number range</label>
+						<div class="inline-3">
+							<input type="number" id="numberMin" value="0" step="1" />
+							<span class="batch-note">to</span>
+							<input type="number" id="numberMax" value="9" step="1" />
+						</div>
+						<label>Repeat N 🔁</label>
+						<div class="inline-3">
+							<input type="number" id="repeatN" value="1000" min="1" step="1" />
+							<span id="repeatNHuman" class="small"></span>
+							<input type="text" id="repeatNShorthand" placeholder="e.g. 2M, 500K" />
+						</div>
+						<label>Presets</label>
+						<div class="button-group">
+							<button id="preset10K">10K</button>
+							<button id="preset100K">100K</button>
+							<button id="preset1M">1M</button>
+							<button id="preset10M">10M</button>
+						</div>
+						<details>
+							<summary class="small">Advanced options</summary>
+							<div class="inline-2" style="margin-top:8px">
+								<label>Fast mode ⚡</label><input type="checkbox" id="fastMode" />
+								<label>Full outcomes 📋</label><input type="checkbox" id="fullSample" />
+								<label>Enable bet range 💵</label><input type="checkbox" id="enableBetRange" checked />
+								<label>Bet min 💵</label><input type="number" id="betMin" value="1" min="0.01" step="0.01" disabled />
+								<label>Bet max 💵</label><input type="number" id="betMax" value="10" min="0.01" step="0.01" disabled />
+								<label>Enable max rows 📏</label><input type="checkbox" id="enableMaxRows" />
+								<label>Max rows 📏</label><input type="number" id="sampleLimit" value="5000" min="100" max="20000" step="100" disabled />
+							</div>
+						</details>
+					</div>
+					<div class="split-actions" style="margin-top:8px">
+						<div class="progress" style="height:10px;background:#e5e7eb;border-radius:6px;overflow:hidden">
+							<div id="batchProgressBar" class="progress-inner" style="width:0%;height:100%;background:var(--primary)"></div>
+						</div>
+						<button id="runBatchN" class="btn-primary">▶️ Run</button>
+						<button id="cancelBatch">✖️ Cancel</button>
+					</div>
+					<div id="batchProgressText" class="small"></div>
+					<div id="batchOut" class="outcome"></div>
+				<div class="card" style="margin-top: 12px">
+					<div class="section-title">🎲 Outcome</div>
+					<div id="out" class="outcome"></div>
+				</div>
+			</div>
+			</div>
+			</div>
+			<div id="tabRules" style="display:none">
+				<div class="card">
+					<div class="section-title">📜 Game Rules</div>
+					<div class="small">This guide explains the gameplay and outcomes.</div>
+					<div class="card-section">
+						<div class="sub-title">Players and Picks</div>
+						<div class="outcome">
+							Each player selects one number per color: Green, Pink, Orange, Yellow, Blue.
+							Numbers must be integers within the configured range.
+						</div>
+					</div>
+					<div class="card-section">
+						<div class="sub-title">Cancellations</div>
+						<div class="outcome">
+							If both players choose the same number for a color, that color is cancelled and removed from consideration.
+						</div>
+					</div>
+					<div class="card-section">
+						<div class="sub-title">Winning Mask</div>
+						<div class="outcome">
+							The winning mask is randomly sampled using the epoch seed and probabilities for mask sizes (0–5).
+							The mask contains distinct colored balls chosen fairly within the configured number range and capped by max mask size.
+						</div>
+					</div>
+					<div class="card-section">
+						<div class="sub-title">Exact Matches</div>
+						<div class="outcome">
+							An exact match occurs when a ball in the winning mask matches a player’s remaining ball in both number and color.
+							The total exact matches is denoted as m.
+						</div>
+					</div>
+					<div class="card-section">
+						<div class="sub-title">Prizes</div>
+						<div class="outcome">
+							Prizes use integer multipliers per m: 0–5. The payout is multiplier × average bet between the two players.
+							Multipliers are shown with an X suffix (e.g., 10X).
+						</div>
+					</div>
+					<div class="card-section">
+						<div class="sub-title">RTP and House Edge</div>
+						<div class="outcome">
+							RTP is total prizes divided by total bet revenue over simulations. House Edge is 1 − RTP.
+							Auto fine-tune adjusts multipliers to target a desired RTP while respecting integer multipliers.
+						</div>
+					</div>
+					<div class="card-section">
+						<div class="sub-title">Fast Mode and Sampling</div>
+						<div class="outcome">
+							Fast mode reduces payloads for speed. You can sample a subset of outcomes for inspection; metrics are computed over all repeats.
+						</div>
+					</div>
+				</div>
+			</div>
+			<script src="app.js?v=3"></script>
+		</div>
+		<div id="tuneModal" class="modal-overlay">
+			<div class="modal-content">
+				<div class="section-title">🧪 Tuning Report</div>
+				<div class="row" style="margin-top:6px; align-items:center; gap:8px">
+					<div id="tuneModalCountdown" class="small"></div>
+					<div class="progress" style="height:10px;background:#e5e7eb;border-radius:6px;overflow:hidden; flex:1">
+						<div id="tuneModalProgressBar" class="progress-inner" style="width:100%;height:100%;background:var(--primary)"></div>
+					</div>
+				</div>
+				<div id="tuneModalBody" class="outcome" style="margin-top:8px"></div>
+				<div class="row" style="margin-top:12px">
+					<button id="tuneModalClose" class="btn-primary">OK</button>
+				</div>
+			</div>
+		</div>
+		<div id="betsModal" class="modal-overlay" style="display:none">
+			<div class="modal-content">
+				<div class="section-title">📘 Player Bets</div>
+				<div id="betsModalBody" class="outcome" style="margin-top:8px"></div>
+				<div class="row" style="margin-top:12px">
+					<button id="betsModalClose" class="btn-primary">Close</button>
+				</div>
+			</div>
+		</div>
+		<div id="payoutsModal" class="modal-overlay" style="display:none">
+			<div class="modal-content">
+				<div class="section-title">💰 Player Payouts</div>
+				<div id="payoutsModalBody" class="outcome" style="margin-top:8px"></div>
+				<div class="row" style="margin-top:12px">
+					<button id="payoutsModalClose" class="btn-primary">Close</button>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>
