@@ -1,0 +1,40 @@
+# Node/TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+*.local
+
+# Coverage
+coverage/
+
+# Vite/Build caches
+.vite/
+.cache/
+
+# OS/IDE
+.DS_Store
+.idea/
+.vscode/
+
+# LaTeX build artifacts
+spec/latex/*.aux
+spec/latex/*.log
+spec/latex/*.out
+spec/latex/*.toc
+spec/latex/*.lof
+spec/latex/*.lot
+spec/latex/*.fls
+spec/latex/*.fdb_latexmk
+spec/latex/*.synctex.gz
+spec/latex/*.pdf
+
+# Trae IDE
+.trae/
