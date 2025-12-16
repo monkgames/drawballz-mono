@@ -62,7 +62,7 @@ This space defines:
 
 An **Epoch** is a fixed operational window controlled by the house.
 
-Each epoch pre-announces:
+Each epoch pre-announces::
 
 -   ✅ **Winning Mask Distribution Table** (probability for mask sizes 0–5)
 -   ✅ **Fixed Prize Table** (integer multipliers by exact matches `m`)
