@@ -35,6 +35,18 @@ export interface Outcome {
 	remainingB: ReadonlyArray<Ball>
 	cancelled: ReadonlyArray<Ball>
 	eliminatedNumbers: ReadonlyArray<number>
+	stackdata?: ReadonlyArray<{
+		step: number
+		cancelled: ReadonlyArray<Ball>
+	}>
+	rewardPool?: {
+		type: 'shared' | 'individual'
+		combinedBalls?: ReadonlyArray<Ball>
+		byPlayer?: {
+			A: ReadonlyArray<Ball>
+			B: ReadonlyArray<Ball>
+		}
+	}
 }
 
 export interface BatchRequest {

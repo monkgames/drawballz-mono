@@ -128,15 +128,19 @@ export function evaluateMatch(input: MatchInput): Outcome {
 	const ra: Ball[] = []
 	const rb: Ball[] = []
 	const cancelled: Ball[] = []
+	const stackdata: { step: number; cancelled: ReadonlyArray<Ball> }[] = []
 	const byColorA = new Map<Color, Ball>()
 	const byColorB = new Map<Color, Ball>()
 	for (const b of input.playerA.balls) byColorA.set(b.color, b)
 	for (const b of input.playerB.balls) byColorB.set(b.color, b)
+	let stepIdx = 0
 	for (let c = 1 as Color; c <= 5; c = (c + 1) as Color) {
 		const a = byColorA.get(c)
 		const b = byColorB.get(c)
 		if (a && b && a.number === b.number) {
 			cancelled.push(a)
+			stepIdx++
+			stackdata.push({ step: stepIdx, cancelled: [a, b] })
 		} else {
 			if (a) ra.push(a)
 			if (b) rb.push(b)
@@ -188,6 +192,16 @@ export function evaluateMatch(input: MatchInput): Outcome {
 	const prizeA = basePrizeA * betA
 	const prizeB = basePrizeB * betB
 	const prize = prizeA + prizeB
+	const rewardPool =
+		ra.length > 0 && rb.length > 0
+			? {
+					type: 'shared' as const,
+					combinedBalls: [...ra, ...rb],
+			  }
+			: {
+					type: 'individual' as const,
+					byPlayer: { A: ra, B: rb },
+			  }
 	return {
 		m,
 		prize,
@@ -196,6 +210,8 @@ export function evaluateMatch(input: MatchInput): Outcome {
 		remainingB: rb,
 		cancelled,
 		eliminatedNumbers,
+		stackdata,
+		rewardPool,
 	}
 }
 

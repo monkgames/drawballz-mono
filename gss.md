@@ -64,25 +64,13 @@ An **Epoch** is a fixed operational window controlled by the house.
 
 Each epoch pre-announces:
 
--   ✅ **Prize sets** (unordered ball sets)
--   ✅ **Prize tier mapping**
--   ✅ **Total prize pool**
--   ✅ **Max payouts**
--   ✅ **Rollover rules**
+-   ✅ **Winning Mask Distribution Table** (probability for mask sizes 0–5)
+-   ✅ **Fixed Prize Table** (integer multipliers by exact matches `m`)
+-   ✅ **Total prize pool cap**
+-   ✅ **Maximum payouts per epoch**
+-   ✅ **Epoch identifier or commitment hash** (recommended)
 
-Players **see prizes in advance**, but cannot force outcomes.
-
----
-
-## 4. Prize Sets (Critical Rule)
-
-> **A prize is awarded ONLY if the remaining balls EXACTLY match one of the announced prize sets.**
-
--   Matching is **unordered**
--   Matching requires **number + color**
--   Remaining count alone **never guarantees a win**
-
-This is the **final prize gate**.
+Players see parameters in advance but cannot force outcomes.
 
 ---
 
@@ -120,207 +108,18 @@ RB = remaining balls of Player B
 
 ---
 
-### Step 3 — Number-Only Conflict Resolution (Secondary Cut)
+### Step 3 — Winning Mask Generation
 
-Triggered if both players have the **same number** remaining (color ignored).
+After cancellations, a color-unique unordered Winning Mask `W` is generated:
 
-Resolution order (repeat until stable):
+-   `|W| = k` where `k ∈ {0..5}` sampled from the epoch’s distribution.
+-   For each chosen color, choose a number uniformly in `{0..99}`.
+-   Construct `W` as the unordered set of `(number, color)` pairs.
 
-1. Player with **higher remaining count** loses that number
-2. If equal count → player with **higher sum of numbers** loses it
-3. If still equal → **deterministic RNG tie-break**
+### Step 4 — Exact Matches and Outcome
 
-This step always terminates because total remaining balls strictly decreases.
-
----
-
-### Step 4 — Shared Prize Evaluation (Highest Priority)
-
-Compute:
-TOTAL = RA + RB
-
-If:
-TOTAL ∈ {3, 5}
-AND remaining balls EXACTLY match a shared prize set
-
-➡ **Shared Prize**
-➡ Prize is split
-➡ Match ends immediately
-
-Shared prize always overrides all other outcomes.
-
----
-
-### Step 5 — Blooper Evaluation
-
-#### Ultra Blooper
-
-RA == 0 AND RB == 0
-➡ No prize
-
-#### Close Blooper
-
-RA == RB
-AND RA ∈ {3, 5}
-AND shared prize NOT triggered
-➡ No prize (optional cosmetic feedback)
-
----
-
-### Step 6 — Individual Prize Evaluation (Asymmetric Only)
-
-A player may win **individually** if and only if:
-
-Remaining ∈ {1, 2, 4}
-AND Remaining < Opponent Remaining
-AND Remaining set EXACTLY matches an individual prize set
-
--   Only **one player** can win individually
--   Ties never pay
-
----
-
-### Step 7 — No Result
-
-If none of the above conditions are met:
-➡ No prize
-
----
-
-## 7. Outcome Exclusivity Invariants (Non-Negotiable)
-
-1. All cancellations must fully resolve before evaluation
-2. Shared prize has absolute priority
-3. Individual prize requires strict asymmetry
-4. Ties never produce individual wins
-5. Only one shared tier may trigger
-6. Only one payout source per match
-
-These rules eliminate:
-
--   Double wins
--   Double payouts
--   Ambiguity
--   Race conditions
-
----
-
-## 8. Winning Odds (Correct Definition)
-
-### Important Clarification
-
-There are **no per-match “1 in X” odds**.
-
-Instead, odds are defined as **rarity of prize sets in the combinatorial space**.
-
-### Correct Formula (Per Tier)
-
-Let:
-
--   `Pk` = number of prize sets of size `k`
-
-Then:
-Odds(k) = Pk / C(495, k)
-
-This is:
-
--   Mathematically correct
--   Audit-safe
--   Independent of player behavior
-
-Player interaction only affects **which subsets are sampled**, not the space itself.
-
----
-
-## 9. Human RNG Model
-
--   Players act as the entropy source
--   The system does NOT generate randomness
--   Deterministic rules + human unpredictability = stochastic outcomes
-
-This is equivalent (mathematically) to:
-
--   Poker
--   Rock–Paper–Scissors
--   Competitive puzzles
-
----
-
-## 10. Bankroller Safety
-
--   Fixed prize sets
--   Fixed payouts
--   No jackpot multiplication
--   No count farming
--   No EV loops
--   Bounded liability per epoch
-
-Worst-case loss is **known in advance**.
-
----
-
-## 11. Identified Risks & Hardened Fixes
-
-### NOT Math Bugs (but must be handled)
-
-1. **Collusion**
-
-    - Fix: matchmaking randomization, rematch limits
-
-2. **Cold Prize Sets**
-
-    - Fix: generate prize sets from reachable simulations
-
-3. **Player Herding**
-
-    - Fix: multiple prize sets, decoy visuals
-
-4. **Bots**
-
-    - Fix: rate limits, PvE injection
-
-5. **Miscommunication**
-    - Fix: never state per-match odds publicly
-
----
-
-## 12. What Is Explicitly NOT Broken
-
--   ❌ Odds manipulation
--   ❌ Double payouts
--   ❌ Infinite loops
--   ❌ Count exploitation
--   ❌ RNG trust issues
--   ❌ Bankroll leakage
-
----
-
-## 13. Player-Facing One-Liner
-
-> “We cancel matching balls.  
-> If what remains exactly matches a listed prize set, you win — alone or together.”
-
----
-
-## 14. Final Mathematical Verdict
-
-✅ Combinatorially sound  
-✅ Deterministic and auditable  
-✅ Bankroller-safe  
-✅ No hidden edge cases  
-✅ Production-ready
-
----
-
-## 15. Canonical Summary Sentence
-
-> **Ball Cut uses player interaction to sample a fixed combinatorial space, awarding prizes only for exact matches against pre-announced sets, with all outcomes deterministic and capped.**
-
----
-
-**END OF SPEC — SINGLE SOURCE OF TRUTH**
-
-**PATCH**
+-   `m_A = |{(n,c) ∈ W | (n,c) ∈ R_A}|`, `m_B = |{(n,c) ∈ W | (n,c) ∈ R_B}|`, `m = m_A + m_B`.
+-   Outcome depends only on `m` and pays via integer multipliers × bet.
 
 ## Color Uniqueness & Configuration Constraint
 
@@ -363,7 +162,7 @@ Worst-case loss is **known in advance**.
 
 -   **Post-resolution Winning Mask**
 -   **Winning Mask Distribution Table**
--   **Fixed Prize Table (non-multiplier-based)**
+-   **Fixed Prize Table (integer multipliers)**
 
 All other sections of the original specification remain **unchanged and authoritative** unless explicitly overridden below.
 
@@ -489,24 +288,25 @@ Exactly **one** outcome is evaluated per match.
 
 ## 6. Fixed Prize Table (New Epoch Parameter)
 
-Each epoch MUST publish a **Fixed Prize Table** mapping exact match counts to **absolute prize values**.
+Each epoch MUST publish a **Fixed Prize Table** mapping exact match counts to **integer prize multipliers** (X units).
 
 ### Example Structure
 
 | Exact Matches (m) | Fixed Prize |
 |------------------|-------------|
-| 0 | 0 |
-| 1 | Prize₁ |
-| 2 | Prize₂ |
-| 3 | Prize₃ |
-| 4 | Prize₄ |
-| 5 | Prize₅ |
+| 0 | 0X |
+| 1 | X₁ |
+| 2 | X₂ |
+| 3 | X₃ |
+| 4 | X₄ |
+| 5 | X₅ |
 
 ### Fixed Prize Table Constraints
 
--   Prizes are **absolute values**, not multipliers
--   Prizes are **independent of stake size**
--   Only **one prize** may be awarded per match
+-   Prizes are **integer multipliers (X)** applied **per-player** to that player’s bet
+-   Total match prize is the **sum** of per-player prizes
+-   Multipliers are integers to ensure precise RTP accounting and auditability
+-   Only **one outcome** per match contributes prizes (no multiple payouts)
 -   The prize table is **immutable** for the duration of the epoch
 
 ---
@@ -525,16 +325,16 @@ The following invariants remain fully enforced:
 
 ## 8. RTP Definition (Updated and Clarified)
 
-The expected Return to Player (RTP) for an epoch is defined as:
+The expected Return to Player (RTP) for an epoch is defined with respect to multiplier payouts:
 
 \[
-\text{RTP} = \sum_{m=0}^{5} P(m) \times \text{FixedPrize}(m)
+\text{RTP} = \sum_{m=0}^{5} P(m) \times \text{Multiplier}(m)
 \]
 
 Where:
 
 -   `P(m)` is the probability of achieving exactly `m` matches
--   `FixedPrize(m)` is the published fixed prize for `m` matches
+-   `Multiplier(m)` is the published integer multiplier for `m` matches
 
 The probability `P(m)` **emerges deterministically** from:
 
@@ -545,30 +345,6 @@ The probability `P(m)` **emerges deterministically** from:
 The operator does **not** directly set `P(m)`; it is implied by the published epoch parameters.
 
 ---
----
-
-## 8. RTP Definition (Updated and Clarified)
-
-The expected **Return to Player (RTP)** for an epoch is defined as:
-
-\[
-\text{RTP} = \sum_{m=0}^{5} \left[ P(m) \times \text{FixedPrize}(m) \right]
-\]
-
-Where:
-
--   `P(m)` is the probability of achieving exactly `m` exact matches
--   `FixedPrize(m)` is the published fixed prize for `m` matches
-
-The probability `P(m)` is **not set directly** by the operator.
-It emerges deterministically from:
-
--   the published **Winning Mask Distribution Table**
--   the combinatorics of exact number + color matching
--   the empirical distribution of remaining ball set sizes `R`
-
----
-
 ## 9. New Epoch Configuration Checklist (Mandatory)
 
 Before an epoch starts, the operator **MUST** define and publish:
@@ -586,7 +362,7 @@ Once the epoch starts, **none of the above parameters may be altered**.
 ## 10. Player-Facing Summary (Updated)
 
 > “After all matching balls are cut, the system reveals a winning pattern.
-> The number of exact matches you have decides which fixed prize you win.”
+> Your exact matches determine an **integer multiplier (X)** applied to your bet; total prize is the sum of per-player payouts.”
 
 ---
 

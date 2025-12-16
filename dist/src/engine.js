@@ -103,17 +103,21 @@ function evaluateMatch(input) {
     const ra = [];
     const rb = [];
     const cancelled = [];
+    const stackdata = [];
     const byColorA = new Map();
     const byColorB = new Map();
     for (const b of input.playerA.balls)
         byColorA.set(b.color, b);
     for (const b of input.playerB.balls)
         byColorB.set(b.color, b);
+    let stepIdx = 0;
     for (let c = 1; c <= 5; c = (c + 1)) {
         const a = byColorA.get(c);
         const b = byColorB.get(c);
         if (a && b && a.number === b.number) {
             cancelled.push(a);
+            stepIdx++;
+            stackdata.push({ step: stepIdx, cancelled: [a, b] });
         }
         else {
             if (a)
@@ -162,6 +166,15 @@ function evaluateMatch(input) {
     const prizeA = basePrizeA * betA;
     const prizeB = basePrizeB * betB;
     const prize = prizeA + prizeB;
+    const rewardPool = ra.length > 0 && rb.length > 0
+        ? {
+            type: 'shared',
+            combinedBalls: [...ra, ...rb],
+        }
+        : {
+            type: 'individual',
+            byPlayer: { A: ra, B: rb },
+        };
     return {
         m,
         prize,
@@ -170,6 +183,8 @@ function evaluateMatch(input) {
         remainingB: rb,
         cancelled,
         eliminatedNumbers,
+        stackdata,
+        rewardPool,
     };
 }
 function evaluateBatch(req) {

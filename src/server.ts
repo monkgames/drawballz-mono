@@ -1,5 +1,7 @@
 import express from 'express'
 import http from 'http'
+import path from 'path'
+import fs from 'fs'
 import { evaluateBatch, evaluateBatchCompact, evaluateMatch } from './engine'
 import {
 	BatchRequest,
@@ -30,6 +32,7 @@ app.use((req, res, next) => {
 	next()
 })
 app.use(
+	'/sim',
 	express.static('public', {
 		etag: false,
 		lastModified: false,
@@ -45,29 +48,48 @@ const colorMap: Record<string, Color> = {
 	yellow: 4,
 	blue: 5,
 }
+const prizeTable: Record<number, number> = {
+	0: 0,
+	1: 10,
+	2: 20,
+	3: 50,
+	4: 200,
+	5: 1000,
+}
+function resolveColor(c: Color | string): Color | null {
+	if (typeof c === 'number') {
+		const n = Math.floor(c)
+		return n >= 1 && n <= 5 ? (n as Color) : null
+	}
+	const m = colorMap[String(c).toLowerCase()]
+	return m ? (m as Color) : null
+}
+function sanitizePlayer(p: PlayerConfig): PlayerConfig {
+	// Preserve order while removing duplicates and invalid entries
+	const seen = new Set<Color>()
+	const balls: Ball[] = []
+	for (const b of p.balls) {
+		const cc = resolveColor((b as any).color)
+		if (!cc) continue
+		if (seen.has(cc)) continue
+		seen.add(cc)
+		const num = Math.max(1, Math.min(99, Number(b.number) || 0))
+		balls.push({ color: cc, number: num })
+		if (balls.length >= 5) break
+	}
+	return { id: p.id, balls, betAmount: p.betAmount }
+}
 const players: Record<string, PlayerConfig> = {
-	A: {
-		id: 'A',
-		balls: [
-			{ number: 1, color: 1 },
-			{ number: 2, color: 2 },
-			{ number: 3, color: 3 },
-			{ number: 4, color: 4 },
-			{ number: 5, color: 5 },
-		],
-		betAmount: 100,
-	},
-	B: {
-		id: 'B',
-		balls: [
-			{ number: 6, color: 1 },
-			{ number: 7, color: 2 },
-			{ number: 8, color: 3 },
-			{ number: 9, color: 4 },
-			{ number: 10, color: 5 },
-		],
-		betAmount: 100,
-	},
+	A: { id: 'A', balls: [], betAmount: 1 },
+	B: { id: 'B', balls: [], betAmount: 1 },
+}
+const playerSlotsOrder: Record<string, Color[]> = {
+	A: [1, 2, 3, 4, 5],
+	B: [1, 2, 3, 4, 5],
+}
+const playerSlotsBalls: Record<string, Ball[]> = {
+	A: [],
+	B: [],
 }
 
 app.get('/health', (_req, res) => {
@@ -77,9 +99,7 @@ app.get('/health', (_req, res) => {
 // Expose current prize multipliers for UI
 app.get('/prize', (_req, res) => {
 	try {
-		// Fixed table representing current configured multipliers
-		const table = { 0: 0, 1: 10, 2: 20, 3: 50, 4: 200, 5: 1000 }
-		res.json({ table })
+		res.json({ table: prizeTable })
 	} catch (e: any) {
 		res.status(400).json({ error: String(e.message ?? e) })
 	}
@@ -93,7 +113,9 @@ app.get('/player/:id', (req, res) => {
 			res.status(404).json({ error: 'player not found' })
 			return
 		}
-		res.json(p)
+		const s = sanitizePlayer(p)
+		players[id] = s
+		res.json(s)
 	} catch (e: any) {
 		res.status(400).json({ error: String(e.message ?? e) })
 	}
@@ -187,6 +209,16 @@ app.post('/simulate/batch', (req, res) => {
 	}
 })
 
+app.post('/players/reset', (_req, res) => {
+	try {
+		players['A'] = { id: 'A', balls: [], betAmount: 1 }
+		players['B'] = { id: 'B', balls: [], betAmount: 1 }
+		res.json({ ok: true })
+	} catch (e: any) {
+		res.status(400).json({ error: String(e?.message ?? e) })
+	}
+})
+
 const server = http.createServer(app)
 
 let currentRound: {
@@ -195,6 +227,22 @@ let currentRound: {
 	startedAt: number
 	lastOutcome?: Outcome
 } | null = null
+let currentRoundPlayers: { A: PlayerConfig; B: PlayerConfig } | null = null
+const instanceId = Math.random().toString(36).slice(2)
+const serverBootTs = Date.now()
+
+app.get('/server/info', (_req, res) => {
+	try {
+		res.json({
+			ok: true,
+			pid: process.pid,
+			instanceId,
+			startedAt: serverBootTs,
+		})
+	} catch (e: any) {
+		res.status(400).json({ error: String(e.message ?? e) })
+	}
+})
 
 app.post('/round/start', (_req, res) => {
 	try {
@@ -219,6 +267,32 @@ app.get('/round/status', (_req, res) => {
 			id: currentRound.id,
 			seed: currentRound.seed,
 			startedAt: currentRound.startedAt,
+			multipliers: prizeTable,
+			players: (() => {
+				const snapshot = currentRoundPlayers
+				const A = snapshot?.A || players['A']
+				const B = snapshot?.B || players['B']
+				return {
+					A: {
+						id: 'A',
+						balls: (A.balls || []).slice(0, 5),
+						betAmount: A.betAmount,
+					},
+					B: {
+						id: 'B',
+						balls: (B.balls || []).slice(0, 5),
+						betAmount: B.betAmount,
+					},
+					names: {
+						A:
+							[...clients].find(c => c.playerId === 'A')?.name ||
+							'',
+						B:
+							[...clients].find(c => c.playerId === 'B')?.name ||
+							'',
+					},
+				}
+			})(),
 			lastOutcome: currentRound.lastOutcome || null,
 		})
 	} catch (e: any) {
@@ -304,22 +378,137 @@ try {
 			}
 			if (msg.type === 'config:update') {
 				const id = String(msg.playerId || '').toUpperCase()
-				const color = msg.color
-				const number = Number(msg.number)
+				let color: Color | null = null
+				const rawColor = msg.color
+				if (typeof rawColor === 'number') {
+					color = rawColor as Color
+				} else if (typeof rawColor === 'string') {
+					color = colorMap[String(rawColor).toLowerCase()] || null
+				}
+				const number = Math.max(1, Math.min(99, Number(msg.number)))
 				const betAmount = Number(msg.betAmount)
+				const rawOrder = Array.isArray((msg as any).slotOrder)
+					? ((msg as any).slotOrder as any[])
+					: null
+				if (rawOrder && rawOrder.length >= 1) {
+					const nextOrder: Color[] = []
+					for (let i = 0; i < Math.min(5, rawOrder.length); i++) {
+						const r = rawOrder[i]
+						let c: Color | null = null
+						if (typeof r === 'number') {
+							c = Number(r) as Color
+						} else if (typeof r === 'string') {
+							c = colorMap[String(r).toLowerCase()] || null
+						}
+						if (c) nextOrder.push(c)
+					}
+					if (nextOrder.length > 0) {
+						playerSlotsOrder[id] = [
+							...nextOrder,
+							...playerSlotsOrder[id].filter(
+								x => !nextOrder.includes(x)
+							),
+						].slice(0, 5)
+						const byColor = new Map<number, Ball>()
+						for (const b of players[id].balls) {
+							const c = resolveColor(b.color)
+							if (c) byColor.set(c, b)
+						}
+						const ordered: Ball[] = []
+						for (const c of playerSlotsOrder[id]) {
+							const found = byColor.get(c)
+							if (found) ordered.push(found)
+						}
+						playerSlotsBalls[id] = ordered.slice(0, 5)
+						try {
+							console.log('config:update (slotOrder)', {
+								id,
+								slotOrder: playerSlotsOrder[id],
+								numbers: ordered.map(b => b.number),
+							})
+						} catch (_) {}
+					}
+				}
 				if (!players[id]) return
 				if (!color || !Number.isFinite(number)) return
-				const idx = players[id].balls.findIndex(b => b.color === color)
-				const updated = { color, number }
-				if (idx >= 0) {
-					players[id].balls = [
-						...players[id].balls.slice(0, idx),
-						updated,
-						...players[id].balls.slice(idx + 1),
-					]
+				const updated: Ball = { color, number }
+				const providedIndex = Number.isFinite(Number(msg.index))
+					? Math.max(0, Math.min(4, Math.floor(Number(msg.index))))
+					: -1
+				if (providedIndex >= 0) {
+					// Remove any existing occurrence of this color elsewhere
+					const existingIdx = players[id].balls.findIndex(
+						b => b.color === color
+					)
+					if (existingIdx >= 0 && existingIdx !== providedIndex) {
+						players[id].balls = [
+							...players[id].balls.slice(0, existingIdx),
+							...players[id].balls.slice(existingIdx + 1),
+						]
+					}
+					// Expand array if needed
+					let arr = [...players[id].balls]
+					while (arr.length <= providedIndex) {
+						arr = [...arr, { color: 1, number: 1 } as Ball]
+					}
+					arr[providedIndex] = updated
+					players[id].balls = arr
+					playerSlotsBalls[id] = arr.slice(0, 5)
+					try {
+						console.log('config:update (index)', {
+							id,
+							index: providedIndex,
+							order: arr.map(b => b.color),
+							numbers: arr.map(b => b.number),
+						})
+					} catch (_) {}
+					// Track slot color order
+					const c = resolveColor(color) as Color
+					const prev = playerSlotsOrder[id] || [1, 2, 3, 4, 5]
+					const otherIdx = prev.findIndex(x => x === c)
+					if (otherIdx >= 0 && otherIdx !== providedIndex) {
+						const next = prev.slice()
+						next[otherIdx] = next[providedIndex]
+						next[providedIndex] = c
+						playerSlotsOrder[id] = next
+					} else {
+						const next = prev.slice()
+						next[providedIndex] = c
+						playerSlotsOrder[id] = next
+					}
 				} else {
-					players[id].balls = [...players[id].balls, updated as Ball]
+					// Fallback: update by color, keep insertion order
+					const idx = players[id].balls.findIndex(
+						b => b.color === color
+					)
+					if (idx >= 0) {
+						players[id].balls = [
+							...players[id].balls.slice(0, idx),
+							updated,
+							...players[id].balls.slice(idx + 1),
+						]
+					} else {
+						players[id].balls = [
+							...players[id].balls,
+							updated as Ball,
+						]
+					}
+					playerSlotsBalls[id] = players[id].balls.slice(0, 5)
+					try {
+						console.log('config:update (color)', {
+							id,
+							order: players[id].balls.map(b => b.color),
+							numbers: players[id].balls.map(b => b.number),
+						})
+					} catch (_) {}
+					// Update order by insertion if index not provided
+					const c = resolveColor(color) as Color
+					const prev = playerSlotsOrder[id] || [1, 2, 3, 4, 5]
+					const has = prev.includes(c)
+					const next = has ? prev.slice() : [...prev, c]
+					playerSlotsOrder[id] = next.slice(0, 5)
 				}
+				players[id] = { ...players[id] }
 				if (Number.isFinite(betAmount) && betAmount >= 1) {
 					players[id].betAmount = Math.floor(betAmount)
 				}
@@ -487,13 +676,95 @@ try {
 					return
 				}
 				if (state.A && state.B) {
-					for (const c of clients) {
-						if (c.roomId === room) {
-							c.socket.send(
-								JSON.stringify({ type: 'match:start' })
-							)
+					// small delay to ensure any pending config:update messages are applied
+					setTimeout(() => {
+						const id = Math.random().toString(36).slice(2)
+						const seed = 'round-' + Date.now() + '-' + id
+						currentRound = { id, seed, startedAt: Date.now() }
+						const countdownMs = 5000
+						const bufferMs = 1500
+						const uiCountdownStartTs = Date.now() + bufferMs
+						const cancelStartTs = uiCountdownStartTs + countdownMs
+						const serverNowTs = Date.now()
+						const aClient = [...clients].find(
+							c => c.roomId === room && c.playerId === 'A'
+						)
+						const bClient = [...clients].find(
+							c => c.roomId === room && c.playerId === 'B'
+						)
+						try {
+							playerSlotsOrder['A'] = (players['A'].balls || [])
+								.slice(0, 5)
+								.map(
+									b => resolveColor((b as any).color) || 1
+								) as Color[]
+							playerSlotsOrder['B'] = (players['B'].balls || [])
+								.slice(0, 5)
+								.map(
+									b => resolveColor((b as any).color) || 1
+								) as Color[]
+						} catch (_) {}
+						for (const c of clients) {
+							if (c.roomId === room) {
+								const AA = (
+									playerSlotsBalls['A'] &&
+									playerSlotsBalls['A'].length >= 1
+										? playerSlotsBalls['A']
+										: players['A'].balls
+								).slice(0, 5)
+								const BB = (
+									playerSlotsBalls['B'] &&
+									playerSlotsBalls['B'].length >= 1
+										? playerSlotsBalls['B']
+										: players['B'].balls
+								).slice(0, 5)
+								c.socket.send(
+									JSON.stringify({
+										type: 'match:start',
+										roundId: id,
+										seed,
+										cancelStartTs,
+										countdownMs,
+										uiCountdownStartTs,
+										serverNowTs,
+										multipliers: prizeTable,
+										players: {
+											A: {
+												id: 'A',
+												balls: AA,
+												betAmount:
+													players['A'].betAmount,
+												name: aClient?.name || '',
+											},
+											B: {
+												id: 'B',
+												balls: BB,
+												betAmount:
+													players['B'].betAmount,
+												name: bClient?.name || '',
+											},
+										},
+									})
+								)
+							}
 						}
-					}
+						currentRoundPlayers = {
+							A: {
+								id: 'A',
+								balls:
+									playerSlotsBalls['A']?.slice(0, 5) ||
+									players['A'].balls.slice(0, 5),
+								betAmount: players['A'].betAmount,
+							},
+							B: {
+								id: 'B',
+								balls:
+									playerSlotsBalls['B']?.slice(0, 5) ||
+									players['B'].balls.slice(0, 5),
+								betAmount: players['B'].betAmount,
+							},
+						}
+					}, 300)
 					proposalAcceptedByRoom[room] = { A: false, B: false }
 					proposalSentByRoom[room] = false
 				}
@@ -531,8 +802,59 @@ try {
 	console.error('WebSocket init failed:', e)
 }
 
-const port = process.env.PORT ? Number(process.env.PORT) : 3001
-server.listen(port, () => {
-	// eslint-disable-next-line no-console
-	console.log(`Fresh server listening on http://localhost:${port}`)
-})
+async function boot() {
+	try {
+		const isMono = process.env.MONO_DEV === '1'
+		if (isMono) {
+			const viteMod: any = await import('vite')
+			const vite = await viteMod.createServer({
+				root: path.resolve(process.cwd(), 'game'),
+				appType: 'custom',
+				server: { middlewareMode: true },
+			})
+			app.use(vite.middlewares)
+			app.use('*', async (req, res) => {
+				try {
+					const url = req.originalUrl
+					const gameRoot = path.resolve(process.cwd(), 'game')
+					const indexPath = path.resolve(gameRoot, 'index.html')
+					const raw = fs.readFileSync(indexPath, 'utf-8')
+					const tpl = await vite.transformIndexHtml(url, raw)
+					res.status(200)
+						.setHeader('Content-Type', 'text/html')
+						.end(tpl)
+				} catch (e: any) {
+					res.status(500).end(String(e?.message ?? e))
+				}
+			})
+		} else {
+			const gameDist = path.resolve(process.cwd(), 'game', 'dist')
+			app.use(
+				express.static(gameDist, {
+					etag: false,
+					lastModified: false,
+					cacheControl: true,
+					maxAge: 0,
+				})
+			)
+			app.get('*', (_req, res) => {
+				try {
+					const indexPath = path.resolve(gameDist, 'index.html')
+					res.sendFile(indexPath)
+				} catch (e: any) {
+					res.status(404).end('Not Found')
+				}
+			})
+		}
+		const port = process.env.PORT ? Number(process.env.PORT) : 3001
+		server.listen(port, () => {
+			// eslint-disable-next-line no-console
+			console.log(`Fresh server listening on http://localhost:${port}`)
+		})
+	} catch (e) {
+		// eslint-disable-next-line no-console
+		console.error('Mono server boot failed:', e)
+		process.exit(1)
+	}
+}
+boot()
