@@ -148,14 +148,18 @@ async function getPlayerName(): Promise<string> {
 				overlay.classList.add('hidden')
 				overlay.style.display = 'none'
 			}
+			console.log('Player name set:', displayName)
 			resolve(displayName)
 		}
-		if (btn) btn.addEventListener('click', submit, { once: true })
+		if (btn) {
+			btn.addEventListener('click', submit)
+		}
 		if (input) {
 			input.addEventListener('keydown', e => {
 				if ((e as KeyboardEvent).key === 'Enter') submit()
 			})
-			input.focus()
+			// Force focus after a short delay to ensure visibility
+			setTimeout(() => input.focus(), 100)
 		}
 	})
 }
@@ -660,10 +664,18 @@ async function layout() {
 								cancelStartLocal,
 								Number(msg?.countdownMs) || 5000,
 								uiStartLocal,
+								selfId,
 								(msg?.multipliers as any) || undefined
 							)
 							if (home && app.stage.children.includes(home)) {
 								app.stage.removeChild(home)
+							}
+							if (battle) {
+								try {
+									app.stage.removeChild(battle)
+									battle.destroy({ children: true })
+								} catch (_) {}
+								battle = null
 							}
 							battle = scene
 							app.stage.addChild(battle)
@@ -1060,7 +1072,8 @@ async function layout() {
 						if (socket) {
 							let slotOrder: string[] = []
 							try {
-								const raw = localStorage.getItem('slotColors') || ''
+								const raw =
+									localStorage.getItem('slotColors') || ''
 								const arr = JSON.parse(raw || '[]') || []
 								if (Array.isArray(arr) && arr.length === 5) {
 									slotOrder = arr.map(c => String(c))

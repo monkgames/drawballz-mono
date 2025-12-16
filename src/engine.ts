@@ -168,16 +168,6 @@ export function evaluateMatch(input: MatchInput): Outcome {
 			if (action === 'cancel' || action === 'cancel_right') {
 				phaseCancelled.push(rightBalls[rIdx])
 			}
-			if (action === 'randomize') {
-				const vals = phase.randomizedValues?.[k]
-				if (vals) {
-					if (vals.left > vals.right) {
-						phaseCancelled.push(leftBalls[lIdx])
-					} else {
-						phaseCancelled.push(rightBalls[rIdx])
-					}
-				}
-			}
 		}
 
 		if (phaseCancelled.length > 0) {

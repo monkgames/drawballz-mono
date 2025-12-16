@@ -7,11 +7,9 @@ import {
 	Texture,
 	Point,
 } from 'pixi.js'
-import { createBall } from '@/modules/ball'
+import { createBall, BallColor } from '@/modules/ball'
 import { gsap } from 'gsap'
-import { duckBGMTemporary, getAudioContext } from '@/audio/bgm'
-
-type BallColor = 'green' | 'pink' | 'orange' | 'yellow' | 'blue'
+import { playClickSound, playConfirmSound } from '@/audio/sfx'
 
 async function loadConfigBackgroundTexture(): Promise<Texture | null> {
 	const candidates = [
@@ -352,6 +350,7 @@ export async function createConfiguratorScene(
 		pv.y = 0
 		item.addChild(pv)
 		item.on('pointertap', (ev: any) => {
+			playClickSound(k)
 			try {
 				console.log('Configurator/color chip tapped', { pick: k })
 				ev?.stopPropagation?.()
@@ -449,11 +448,10 @@ export async function createConfiguratorScene(
 	mintLabel.y = Math.round(mintBtn.y + 25)
 	content.addChild(mintLabel)
 	mintBtn.on('pointertap', async (ev: any) => {
-		const ac = getAudioContext()
-		if (ac) duckBGMTemporary(0.06, 0.02, 0.4, 0.28)
+		playConfirmSound()
 		const number = Math.max(
-			1,
-			Math.min(99, Number(String(numbers[selectedIndex])))
+			0,
+			Math.min(9, Number(String(numbers[selectedIndex])))
 		)
 		const currentUsed = usedColors.filter(
 			c => c !== (originalColor || color)

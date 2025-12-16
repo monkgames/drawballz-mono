@@ -1,7 +1,8 @@
 import { Container, Graphics, Text, Assets, Sprite, Texture } from 'pixi.js'
-import { createBall } from '@/modules/ball'
+import { createBall, BallColor } from '@/modules/ball'
 import { isMobileDevice, isSlowNetwork } from '@/util/env'
-import { stopBGM, getAudioContext, duckBGMTemporary } from '@/audio/bgm'
+import { stopBGM } from '@/audio/bgm'
+import { playHoverSound, playClickSound } from '@/audio/sfx'
 import { gsap } from 'gsap'
 
 function makeBackground(width: number, height: number) {
@@ -37,128 +38,6 @@ function makeRadialTexture(
 	ctx.arc(size / 2, size / 2, size * 0.5, 0, Math.PI * 2)
 	ctx.fill()
 	return Texture.from(c)
-}
-
-function playHoverSound(color: string) {
-	const ac = getAudioContext()
-	if (!ac) return
-	const freqMap: Record<string, number> = {
-		green: 420,
-		pink: 520,
-		orange: 480,
-		yellow: 560,
-		blue: 380,
-	}
-	const f = freqMap[color] || 440
-	const t0 = ac.currentTime
-	const oscA = ac.createOscillator()
-	oscA.type = 'sine'
-	oscA.frequency.setValueAtTime(f, t0)
-	oscA.detune.setValueAtTime(3, t0)
-	const oscSub = ac.createOscillator()
-	oscSub.type = 'sine'
-	oscSub.frequency.setValueAtTime(f * 0.5, t0)
-	const lfo = ac.createOscillator()
-	lfo.type = 'sine'
-	lfo.frequency.setValueAtTime(3.5, t0)
-	const lfoGain = ac.createGain()
-	lfoGain.gain.setValueAtTime(20, t0)
-	const gain = ac.createGain()
-	gain.gain.setValueAtTime(0, t0)
-	gain.gain.linearRampToValueAtTime(0.14, t0 + 0.02)
-	gain.gain.linearRampToValueAtTime(0.12, t0 + 0.08)
-	gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.6)
-	const lowShelf = ac.createBiquadFilter()
-	lowShelf.type = 'lowshelf'
-	lowShelf.frequency.setValueAtTime(160, t0)
-	lowShelf.gain.setValueAtTime(8, t0)
-	const lp = ac.createBiquadFilter()
-	lp.type = 'lowpass'
-	lp.Q.setValueAtTime(0.7, t0)
-	lp.frequency.setValueAtTime(1400, t0)
-	lp.frequency.linearRampToValueAtTime(900, t0 + 0.5)
-	const delay = ac.createDelay(0.35)
-	delay.delayTime.setValueAtTime(0.18, t0)
-	const fb = ac.createGain()
-	fb.gain.setValueAtTime(0.18, t0)
-	delay.connect(fb).connect(delay)
-	const wet = ac.createGain()
-	wet.gain.setValueAtTime(0.42, t0)
-	oscA.connect(gain)
-	oscSub.connect(gain)
-	lfo.connect(lfoGain)
-	lfoGain.connect(lp.frequency)
-	gain.connect(lowShelf)
-	lowShelf.connect(lp)
-	lp.connect(wet)
-	wet.connect(ac.destination)
-	lp.connect(delay)
-	const wetDelay = ac.createGain()
-	wetDelay.gain.setValueAtTime(0.26, t0)
-	delay.connect(wetDelay).connect(ac.destination)
-	oscA.start(t0)
-	oscSub.start(t0)
-	lfo.start(t0)
-	oscA.stop(t0 + 0.65)
-	oscSub.stop(t0 + 0.65)
-	lfo.stop(t0 + 0.65)
-	duckBGMTemporary(0.06, 0.02, 0.6, 0.32)
-}
-
-function playClickSound(color: string) {
-	const ac = getAudioContext()
-	if (!ac) return
-	const freqMap: Record<string, number> = {
-		green: 500,
-		pink: 600,
-		orange: 560,
-		yellow: 640,
-		blue: 460,
-	}
-	const f = freqMap[color] || 520
-	const t0 = ac.currentTime
-	const osc = ac.createOscillator()
-	osc.type = 'triangle'
-	osc.frequency.setValueAtTime(f * 1.1, t0)
-	osc.frequency.exponentialRampToValueAtTime(f * 0.7, t0 + 0.12)
-	const sub = ac.createOscillator()
-	sub.type = 'sine'
-	sub.frequency.setValueAtTime(f * 0.5, t0)
-	const gain = ac.createGain()
-	gain.gain.setValueAtTime(0, t0)
-	gain.gain.linearRampToValueAtTime(0.18, t0 + 0.02)
-	gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3)
-	const lowShelf = ac.createBiquadFilter()
-	lowShelf.type = 'lowshelf'
-	lowShelf.frequency.setValueAtTime(140, t0)
-	lowShelf.gain.setValueAtTime(6, t0)
-	const lp = ac.createBiquadFilter()
-	lp.type = 'lowpass'
-	lp.Q.setValueAtTime(0.8, t0)
-	lp.frequency.setValueAtTime(900, t0)
-	lp.frequency.linearRampToValueAtTime(600, t0 + 0.22)
-	const delay = ac.createDelay(0.28)
-	delay.delayTime.setValueAtTime(0.12, t0)
-	const fb = ac.createGain()
-	fb.gain.setValueAtTime(0.14, t0)
-	delay.connect(fb).connect(delay)
-	const wet = ac.createGain()
-	wet.gain.setValueAtTime(0.36, t0)
-	osc.connect(gain)
-	sub.connect(gain)
-	gain.connect(lowShelf)
-	lowShelf.connect(lp)
-	lp.connect(wet)
-	wet.connect(ac.destination)
-	lp.connect(delay)
-	const wetDelay = ac.createGain()
-	wetDelay.gain.setValueAtTime(0.26, t0)
-	delay.connect(wetDelay).connect(ac.destination)
-	osc.start(t0)
-	sub.start(t0)
-	osc.stop(t0 + 0.3)
-	sub.stop(t0 + 0.3)
-	duckBGMTemporary(0.06, 0.02, 0.4, 0.28)
 }
 
 const DESIGN_W = 1920
@@ -642,37 +521,64 @@ export async function createHomeScene(w: number, h: number) {
 	const btnY = Math.round(DESIGN_H - 80)
 	matchBtnBox.roundRect(0, 0, BTN_W, BTN_H, 14)
 	matchBtnBox.fill({ color: 0x98ffb3, alpha: 1.0 })
-	matchBtnBox.x = Math.round(DESIGN_W / 2 - BTN_W / 2)
-	matchBtnBox.y = btnY
+	// Pivot center for scaling effects
+	matchBtnBox.pivot.set(BTN_W / 2, BTN_H / 2)
+	matchBtnBox.x = Math.round(DESIGN_W / 2)
+	matchBtnBox.y = Math.round(btnY + BTN_H / 2)
 	matchBtnBox.eventMode = 'static'
 	matchBtnBox.cursor = 'pointer'
 	content.addChild(matchBtnBox)
+
+	// Add pulse animation
+	gsap.to(matchBtnBox.scale, {
+		x: 1.05,
+		y: 1.05,
+		duration: 0.8,
+		yoyo: true,
+		repeat: -1,
+		ease: 'sine.inOut',
+	})
+
 	const matchBtnLabel = new Text({
 		text: 'MATCH',
-		style: { fontFamily: 'system-ui', fontSize: 20, fill: 0x000000 },
+		style: {
+			fontFamily: 'system-ui',
+			fontSize: 20,
+			fill: 0x000000,
+			fontWeight: 'bold',
+		},
 	})
 	matchBtnLabel.anchor = 0.5
-	matchBtnLabel.x = Math.round(matchBtnBox.x + BTN_W / 2)
-	matchBtnLabel.y = Math.round(matchBtnBox.y + BTN_H / 2)
+	matchBtnLabel.x = matchBtnBox.x
+	matchBtnLabel.y = matchBtnBox.y
 	matchBtnLabel.roundPixels = true
 	matchBtnLabel.resolution = Math.min(window.devicePixelRatio || 1, 2)
 	content.addChild(matchBtnLabel)
+
 	const cancelBtnBox = new Graphics()
 	cancelBtnBox.roundRect(0, 0, BTN_W, BTN_H, 14)
 	cancelBtnBox.fill({ color: 0xff4d4f, alpha: 1.0 })
+	// Pivot center
+	cancelBtnBox.pivot.set(BTN_W / 2, BTN_H / 2)
 	cancelBtnBox.x = matchBtnBox.x
 	cancelBtnBox.y = matchBtnBox.y
 	cancelBtnBox.eventMode = 'none'
 	cancelBtnBox.cursor = 'auto'
 	cancelBtnBox.visible = false
 	content.addChild(cancelBtnBox)
+
 	const cancelBtnLabel = new Text({
 		text: 'CANCEL',
-		style: { fontFamily: 'system-ui', fontSize: 20, fill: 0xffffff },
+		style: {
+			fontFamily: 'system-ui',
+			fontSize: 20,
+			fill: 0xffffff,
+			fontWeight: 'bold',
+		},
 	})
 	cancelBtnLabel.anchor = 0.5
-	cancelBtnLabel.x = Math.round(cancelBtnBox.x + BTN_W / 2)
-	cancelBtnLabel.y = Math.round(cancelBtnBox.y + BTN_H / 2)
+	cancelBtnLabel.x = cancelBtnBox.x
+	cancelBtnLabel.y = cancelBtnBox.y
 	cancelBtnLabel.roundPixels = true
 	cancelBtnLabel.resolution = Math.min(window.devicePixelRatio || 1, 2)
 	cancelBtnLabel.visible = false
@@ -750,15 +656,24 @@ export async function createHomeScene(w: number, h: number) {
 	const renderLoader2 = (p: number) => {
 		loader2.clear()
 		loader2.circle(0, 0, loaderR2)
-		loader2.stroke({ color: 0x98ffb3, width: 2, alpha: 0.18 })
+		loader2.stroke({ color: 0x98ffb3, width: 2, alpha: 0.1 })
 		loader2.arc(
 			0,
 			0,
 			loaderR2,
-			-Math.PI / 2,
-			-Math.PI / 2 + p * Math.PI * 2
+			-Math.PI / 2 + p * Math.PI * 2,
+			-Math.PI / 2 + p * Math.PI * 2 + Math.PI * 0.75
 		)
 		loader2.stroke({ color: 0x98ffb3, width: 3, alpha: 0.9 })
+		// Inner ring counter-rotating
+		loader2.arc(
+			0,
+			0,
+			loaderR2 * 0.65,
+			p * -Math.PI * 4,
+			p * -Math.PI * 4 + Math.PI
+		)
+		loader2.stroke({ color: 0xe6f7ff, width: 2, alpha: 0.6 })
 	}
 	const loaderState2 = { p: 0 }
 	renderLoader2(0)
@@ -920,12 +835,23 @@ export async function createHomeScene(w: number, h: number) {
 	}
 	const proposalUI = new Container()
 	proposalUI.zIndex = 1000
+
+	// Backdrop
+	const proposalBackdrop = new Graphics()
+	proposalBackdrop.rect(0, 0, DESIGN_W, DESIGN_H)
+	proposalBackdrop.fill({ color: 0x000000, alpha: 0.7 })
+	proposalBackdrop.eventMode = 'static'
+	proposalUI.addChild(proposalBackdrop)
+
 	const proposalPanel = new Graphics()
 	const panelW = 400
 	const panelH = 180
 	proposalPanel.roundRect(0, 0, panelW, panelH, 16)
 	proposalPanel.fill({ color: 0x0a0f12, alpha: 0.96 })
 	proposalPanel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.8 })
+	// Add glow
+	// proposalPanel.filters = [new GlowFilter({ distance: 15, outerStrength: 2, color: 0x98ffb3 })]; // Requires pixi-filters
+
 	proposalPanel.x = Math.round(DESIGN_W / 2 - panelW / 2)
 	proposalPanel.y = Math.round(DESIGN_H / 2 - panelH / 2)
 	const proposalText = new Text({
@@ -1042,7 +968,6 @@ export async function createHomeScene(w: number, h: number) {
 	countdown.resolution = Math.min(window.devicePixelRatio || 1, 2)
 	content.addChild(countdown)
 
-	type BallColor = 'green' | 'pink' | 'orange' | 'yellow' | 'blue'
 	const colorsInit: readonly BallColor[] = [
 		'green',
 		'pink',
@@ -1166,6 +1091,35 @@ export async function createHomeScene(w: number, h: number) {
 	{
 		for (let i = 0; i < balls.length; i++) {
 			balls[i].filters = []
+			const container = balls[i]
+			const ballSprite = (container as any).userData?.ball as
+				| Sprite
+				| undefined
+			if (ballSprite) {
+				ballSprite.eventMode = 'static'
+				ballSprite.cursor = 'pointer'
+				const baseScale = ballSprite.scale.x || 1
+				ballSprite.on('pointerover', () => {
+					playHoverSound(colors[i])
+					gsap.to(ballSprite.scale, {
+						x: baseScale * 1.08,
+						y: baseScale * 1.08,
+						duration: 0.3,
+						ease: 'back.out(1.7)',
+					})
+				})
+				ballSprite.on('pointerout', () => {
+					gsap.to(ballSprite.scale, {
+						x: baseScale,
+						y: baseScale,
+						duration: 0.3,
+						ease: 'power2.out',
+					})
+				})
+				ballSprite.on('pointertap', () => {
+					root.emit('configureBall', colors[i], i, colors.slice())
+				})
+			}
 		}
 	}
 	// expose minimal test hooks
@@ -1251,12 +1205,50 @@ export async function createHomeScene(w: number, h: number) {
 				| undefined
 			if (!bubble) {
 				const b = new Graphics()
-				b.circle(0, 0, Math.round((ballWidths[i] / 2) * 0.55))
+				const radius = Math.round((ballWidths[i] / 2) * 0.55)
+				b.circle(0, 0, radius)
 				b.fill({ color: 0x0a0f12, alpha: 0.35 })
 				b.stroke({ color: 0x334155, width: 2, alpha: 0.9 })
 				b.eventMode = 'static'
 				b.cursor = 'pointer'
 				b.scale.set(s0)
+
+				const plus = new Text({
+					text: '+',
+					style: {
+						fontFamily: 'system-ui',
+						fontSize: Math.round(radius * 1.2),
+						fill: 0x334155,
+						fontWeight: 'bold',
+						align: 'center',
+					},
+				})
+				plus.anchor.set(0.5)
+				// Center visually
+				plus.y = -2
+				b.addChild(plus)
+
+				b.on('pointerover', () => {
+					b.stroke({ color: 0x98ffb3, width: 2, alpha: 1 })
+					plus.style.fill = 0x98ffb3
+					gsap.to(b.scale, {
+						x: s0 * 1.1,
+						y: s0 * 1.1,
+						duration: 0.3,
+						ease: 'back.out(1.7)',
+					})
+				})
+				b.on('pointerout', () => {
+					b.stroke({ color: 0x334155, width: 2, alpha: 0.9 })
+					plus.style.fill = 0x334155
+					gsap.to(b.scale, {
+						x: s0,
+						y: s0,
+						duration: 0.3,
+						ease: 'power2.out',
+					})
+				})
+
 				container.addChild(b)
 				bubble = b
 				b.on('pointertap', () => {
@@ -1549,6 +1541,27 @@ export async function createHomeScene(w: number, h: number) {
 			if (ballSpriteNew) {
 				ballSpriteNew.eventMode = 'static'
 				ballSpriteNew.cursor = 'pointer'
+				const baseScale = ballSpriteNew.scale.x || 1
+				ballSpriteNew.on('pointerover', () => {
+					playHoverSound(newColor as any)
+					gsap.to(ballSpriteNew.scale, {
+						x: baseScale * 1.08,
+						y: baseScale * 1.08,
+						duration: 0.3,
+						ease: 'back.out(1.7)',
+					})
+				})
+				ballSpriteNew.on('pointerout', () => {
+					gsap.to(ballSpriteNew.scale, {
+						x: baseScale,
+						y: baseScale,
+						duration: 0.3,
+						ease: 'power2.out',
+					})
+				})
+				ballSpriteNew.on('pointertap', () => {
+					root.emit('configureBall', newColor, i, colors.slice())
+				})
 			}
 			// attach without per-child scaling; scale the container to keep slot width consistent
 			if (trailSpriteNew) {

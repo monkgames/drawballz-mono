@@ -41,6 +41,7 @@ const http_1 = __importDefault(require("http"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const engine_1 = require("./engine");
+const battle_logic_1 = require("./battle_logic");
 const app = (0, express_1.default)();
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use((req, res, next) => {
@@ -78,11 +79,11 @@ const prizeTable = {
     5: 1000,
 };
 const colorWeights = {
-    green: 1,
-    pink: 2,
-    orange: 3,
-    yellow: 4,
-    blue: 5,
+    green: 10,
+    pink: 20,
+    orange: 30,
+    yellow: 40,
+    blue: 50,
 };
 function resolveColor(c) {
     if (typeof c === 'number') {
@@ -103,7 +104,7 @@ function sanitizePlayer(p) {
         if (seen.has(cc))
             continue;
         seen.add(cc);
-        const num = Math.max(1, Math.min(99, Number(b.number) || 0));
+        const num = Math.max(0, Math.min(9, Number(b.number) || 0));
         balls.push({ color: cc, number: num });
         if (balls.length >= 5)
             break;
@@ -177,7 +178,7 @@ app.post('/player/:id/ball', (req, res) => {
             color = colorMap[body.color.toLowerCase()] || null;
         }
         const number = Number(body.number);
-        if (!color || !Number.isFinite(number) || number < 1 || number > 99) {
+        if (!color || !Number.isFinite(number) || number < 0 || number > 9) {
             res.status(400).json({ error: 'invalid ball payload' });
             return;
         }
@@ -199,6 +200,20 @@ app.post('/player/:id/ball', (req, res) => {
         }
         players[id] = { ...p };
         res.json({ ok: true, player: players[id] });
+    }
+    catch (e) {
+        res.status(400).json({ error: String(e.message ?? e) });
+    }
+});
+app.post('/simulate/battle', (req, res) => {
+    try {
+        const body = req.body;
+        if (!Array.isArray(body.leftBalls) || !Array.isArray(body.rightBalls)) {
+            res.status(400).json({ error: 'invalid balls' });
+            return;
+        }
+        const result = (0, battle_logic_1.simulateBattle)(body.leftBalls, body.rightBalls, colorWeights);
+        res.json({ ok: true, result });
     }
     catch (e) {
         res.status(400).json({ error: String(e.message ?? e) });
@@ -404,7 +419,7 @@ try {
                 else if (typeof rawColor === 'string') {
                     color = colorMap[String(rawColor).toLowerCase()] || null;
                 }
-                const number = Math.max(1, Math.min(99, Number(msg.number)));
+                const number = Math.max(0, Math.min(9, Number(msg.number)));
                 const betAmount = Number(msg.betAmount);
                 const rawOrder = Array.isArray(msg.slotOrder)
                     ? msg.slotOrder

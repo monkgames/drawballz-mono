@@ -1,6 +1,6 @@
 import { Container, Sprite, Assets, Texture, Rectangle } from 'pixi.js'
 
-type BallColor = 'green' | 'pink' | 'orange' | 'yellow' | 'blue'
+export type BallColor = 'green' | 'pink' | 'orange' | 'yellow' | 'blue'
 
 const TRAIL_CENTER_Y_OFFSET: Record<BallColor, number> = {
 	green: 0,

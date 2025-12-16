@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.evaluateMatch = evaluateMatch;
 exports.evaluateBatch = evaluateBatch;
 exports.evaluateBatchCompact = evaluateBatchCompact;
+const battle_logic_1 = require("./battle_logic");
 function validatePlayerBalls(balls, numMin, numMax) {
     const issues = [];
     if (balls.length !== 5)
@@ -100,108 +101,41 @@ function evaluateMatch(input) {
     if (issues.length) {
         throw new Error(issues.join('; '));
     }
+    const colorWeights = {
+        green: 10,
+        pink: 20,
+        orange: 30,
+        yellow: 40,
+        blue: 50,
+    };
+    const leftBalls = [...input.playerA.balls];
+    const rightBalls = [...input.playerB.balls];
+    const battleRes = (0, battle_logic_1.simulateBattle)(leftBalls, rightBalls, colorWeights, epoch.seed + ':' + (input.salt || ''));
     const ra = [];
+    for (const i of battleRes.remainingLeftIndices)
+        ra.push(leftBalls[i]);
     const rb = [];
+    for (const i of battleRes.remainingRightIndices)
+        rb.push(rightBalls[i]);
     const cancelled = [];
     const stackdata = [];
-    const origA = (input.playerA.balls || []).slice(0, 5);
-    const origB = (input.playerB.balls || []).slice(0, 5);
-    const byColorA = new Map();
-    const byColorB = new Map();
-    for (let i = 0; i < origA.length; i++) {
-        const b = origA[i];
-        byColorA.set(b.color, { ball: b, idx: i });
-    }
-    for (let i = 0; i < origB.length; i++) {
-        const b = origB[i];
-        byColorB.set(b.color, { ball: b, idx: i });
-    }
-    let stepIdx = 0;
-    const cancelledIdxA = new Set();
-    const cancelledIdxB = new Set();
-    for (let c = 1; c <= 5; c = (c + 1)) {
-        const a = byColorA.get(c);
-        const b = byColorB.get(c);
-        if (a && b && a.ball.number === b.ball.number) {
-            cancelled.push(a.ball);
-            stepIdx++;
-            stackdata.push({ step: stepIdx, cancelled: [a.ball, b.ball] });
-            cancelledIdxA.add(a.idx);
-            cancelledIdxB.add(b.idx);
-        }
-    }
-    for (let i = 0; i < origA.length; i++) {
-        if (!cancelledIdxA.has(i))
-            ra.push(origA[i]);
-    }
-    for (let i = 0; i < origB.length; i++) {
-        if (!cancelledIdxB.has(i))
-            rb.push(origB[i]);
-    }
-    {
-        const salt = input.salt ? String(input.salt) : '';
-        const W = {
-            1: 0.25,
-            2: 0.5,
-            3: 1.0,
-            4: 1.25,
-            5: 1.5,
-        };
-        const maxPos = Math.min(ra.length, rb.length);
-        for (let i = 0; i < maxPos; i++) {
-            const a = ra[i];
-            const b = rb[i];
-            if (a && b && a.color === b.color) {
-                const wa = W[a.color] || 0;
-                const wb = W[b.color] || 0;
-                let cancelA = false;
-                if (wa > wb)
-                    cancelA = true;
-                else if (wb > wa)
-                    cancelA = false;
-                else {
-                    const r = rng(epoch.seed + ':acolor:' + salt + ':' + i);
-                    cancelA = r() < 0.5;
-                }
-                const picked = cancelA ? a : b;
-                if (cancelA) {
-                    ra.splice(i, 1);
-                }
-                else {
-                    rb.splice(i, 1);
-                }
-                cancelled.push(picked);
-                stepIdx++;
-                stackdata.push({ step: stepIdx, cancelled: [picked] });
-                i--;
+    let step = 1;
+    for (const phase of battleRes.phases) {
+        const phaseCancelled = [];
+        for (let k = 0; k < phase.leftIndices.length; k++) {
+            const lIdx = phase.leftIndices[k];
+            const rIdx = phase.rightIndices[k];
+            const action = phase.actions?.[k] || 'cancel';
+            if (action === 'cancel' || action === 'cancel_left') {
+                phaseCancelled.push(leftBalls[lIdx]);
+            }
+            if (action === 'cancel' || action === 'cancel_right') {
+                phaseCancelled.push(rightBalls[rIdx]);
             }
         }
-        const pairs = [];
-        const bound = Math.min(ra.length, rb.length);
-        for (let i = 0; i < bound; i++) {
-            if (ra[i].number === rb[i].number) {
-                pairs.push({ idx: i, num: ra[i].number });
-            }
-        }
-        if (pairs.length > 0) {
-            pairs.sort((x, y) => y.num - x.num);
-            const chosen = pairs[0];
-            const r = rng(epoch.seed +
-                ':anum:' +
-                salt +
-                ':' +
-                String(chosen.idx) +
-                ':' +
-                String(chosen.num));
-            const cancelA = r() < 0.5;
-            const pick = cancelA ? ra[chosen.idx] : rb[chosen.idx];
-            if (cancelA)
-                ra.splice(chosen.idx, 1);
-            else
-                rb.splice(chosen.idx, 1);
-            cancelled.push(pick);
-            stepIdx++;
-            stackdata.push({ step: stepIdx, cancelled: [pick] });
+        if (phaseCancelled.length > 0) {
+            stackdata.push({ step: step++, cancelled: phaseCancelled });
+            cancelled.push(...phaseCancelled);
         }
     }
     const eliminatedNumbers = [];
@@ -263,6 +197,7 @@ function evaluateMatch(input) {
         eliminatedNumbers,
         stackdata,
         rewardPool,
+        phases: battleRes.phases,
     };
 }
 function evaluateBatch(req) {

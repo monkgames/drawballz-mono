@@ -1,12 +1,11 @@
 import { Container, Graphics, Text } from 'pixi.js'
-import { createBall } from '@/modules/ball'
-import { getAudioContext, duckBGMTemporary } from '@/audio/bgm'
+import { createBall, BallColor } from '@/modules/ball'
+import { playBeep } from '@/audio/sfx'
 
-type BallColor = 'green' | 'pink' | 'orange' | 'yellow' | 'blue'
 type BattleBall = { color: BallColor; number: number }
 
 interface BattlePhase {
-	type: 'symmetric' | 'color' | 'number'
+	type: 'exact' | 'color' | 'number'
 	leftIndices: number[]
 	rightIndices: number[]
 	actions?: (
@@ -38,6 +37,7 @@ export async function createBattleScene(
 	cancelStartTsArg?: number,
 	countdownMsArg?: number,
 	uiCountdownStartTsArg?: number,
+	selfIdArg: string = 'A',
 	multipliersArg?: Record<number, number>
 ) {
 	const root = new Container()
@@ -47,7 +47,7 @@ export async function createBattleScene(
 	const API = String(apiBase || window.location.origin)
 	const DISABLE_COUNTDOWN = true
 	const UI_CHAT_H = 160
-	const UI_WIN_PANEL_H = 150
+	const UI_WIN_PANEL_H = 175
 	const UI_WIN_PANEL_MARGIN = 24
 	const PLAYER_SCALE_MUL = 0.5
 	let colorWeights: Record<BallColor, number> = {
@@ -69,7 +69,7 @@ export async function createBattleScene(
 
 	const bg = new Graphics()
 	bg.rect(0, 0, w, h)
-	bg.fill({ color: 0x2b1400 })
+	bg.fill({ color: 0x0e0e12 })
 	content.addChild(bg)
 
 	const midX = Math.round(w / 2)
@@ -310,7 +310,7 @@ export async function createBattleScene(
 	countLabel.y = Math.round(h * 0.24)
 	content.addChild(countLabel)
 	const countTitle = new Text({
-		text: 'Cancellations in',
+		text: 'Battle Starts in',
 		style: { fontFamily: 'system-ui', fontSize: 18, fill: 0xe6f7ff },
 	})
 	countTitle.anchor = 0.5
@@ -443,366 +443,7 @@ export async function createBattleScene(
 			)
 		}
 	}
-	async function applyCancellations() {
-		try {
-			const byColorLeft = new Map<string, { idx: number; it: any }>()
-			for (let i = 0; i < leftItems.length; i++) {
-				const it = leftItems[i]
-				byColorLeft.set(it.bb.color, { idx: i, it })
-			}
-			const cancelled: {
-				color: string
-				leftIdx: number
-				rightIdx: number
-			}[] = []
-			for (let j = 0; j < rightItems.length; j++) {
-				const r = rightItems[j]
-				const l = byColorLeft.get(r.bb.color)
-				if (l && l.it.bb.number === r.bb.number) {
-					cancelled.push({
-						color: r.bb.color,
-						leftIdx: l.idx,
-						rightIdx: j,
-					})
-				}
-			}
-			const limited = cancelled.slice(0, 2)
-			if (limited.length > 0) {
-				dbgLines[3] = 'Status: cancelling'
-				setDebug([
-					dbgLines[0],
-					dbgLines[1],
-					dbgLines[2],
-					dbgLines[3],
-					'Cancelled: ' + String(limited.length),
-				])
-				const { gsap } = await import('gsap')
-				const ac = getAudioContext()
-				const playBeep = () => {
-					if (!ac) return
-					try {
-						const t = ac.currentTime
-						const osc = ac.createOscillator()
-						const g = ac.createGain()
-						osc.type = 'sine'
-						osc.frequency.setValueAtTime(740, t)
-						g.gain.setValueAtTime(0.06, t)
-						osc.connect(g).connect(ac.destination)
-						duckBGMTemporary(0.12, 0.01, 0.18, 0.15)
-						osc.start(t)
-						osc.stop(t + 0.18)
-						setTimeout(() => {
-							try {
-								osc.disconnect()
-								g.disconnect()
-							} catch (_) {}
-						}, 240)
-					} catch (_) {}
-				}
-				const pairs = limited.map(c => {
-					const L = leftItems[c.leftIdx]
-					const R = rightItems[c.rightIdx]
-					const ringL = new Graphics()
-					const ringR = new Graphics()
-					const rL = Math.max(18, Math.floor(L.node.width * 0.55))
-					const rR = Math.max(18, Math.floor(R.node.width * 0.55))
-					ringL.circle(0, 0, rL)
-					ringL.stroke({ color: 0x98ffb3, width: 3, alpha: 0.0 })
-					ringL.x = L.node.x
-					ringL.y = L.node.y
-					ringR.circle(0, 0, rR)
-					ringR.stroke({ color: 0x98ffb3, width: 3, alpha: 0.0 })
-					ringR.x = R.node.x
-					ringR.y = R.node.y
-					content.addChild(ringL)
-					content.addChild(ringR)
-					try {
-						L.label.style.fill = 0xffe58f
-						R.label.style.fill = 0xffe58f
-					} catch (_) {}
-					return { L, R, ringL, ringR }
-				})
-				await new Promise(r => setTimeout(r, 800))
-				playBeep()
-				await Promise.all(
-					pairs.flatMap(p => [
-						new Promise<void>(resolve =>
-							gsap.to(p.ringL, {
-								alpha: 1,
-								duration: 0.35,
-								ease: 'power2.out',
-								onComplete: resolve,
-							})
-						),
-						new Promise<void>(resolve =>
-							gsap.to(p.ringR, {
-								alpha: 1,
-								duration: 0.35,
-								ease: 'power2.out',
-								onComplete: resolve,
-							})
-						),
-					])
-				)
-				await Promise.all(
-					pairs.flatMap(p => [
-						new Promise<void>(resolve =>
-							gsap.to(p.ringL.scale, {
-								x: 1.15,
-								y: 1.15,
-								duration: 0.5,
-								yoyo: true,
-								repeat: 1,
-								ease: 'sine.inOut',
-								onComplete: resolve,
-							})
-						),
-						new Promise<void>(resolve =>
-							gsap.to(p.ringR.scale, {
-								x: 1.15,
-								y: 1.15,
-								duration: 0.5,
-								yoyo: true,
-								repeat: 1,
-								ease: 'sine.inOut',
-								onComplete: resolve,
-							})
-						),
-					])
-				)
-				const midX = Math.round(w / 2)
-				const elimY = Math.round(chatTopY - 20)
-				await Promise.all(
-					pairs.flatMap((p, i) => {
-						const offset = Math.round(12 * i)
-						const targetXL = Math.round(midX - 12 - offset)
-						const targetXR = Math.round(midX + 12 + offset)
-						return [
-							new Promise<void>(resolve =>
-								gsap.to(p.L.node, {
-									x: p.L.node.x + 8,
-									duration: 0.06,
-									yoyo: true,
-									repeat: 8,
-									ease: 'sine.inOut',
-									onComplete: resolve,
-								})
-							),
-							new Promise<void>(resolve =>
-								gsap.to(p.L.label, {
-									x: p.L.label.x + 8,
-									duration: 0.06,
-									yoyo: true,
-									repeat: 8,
-									ease: 'sine.inOut',
-									onComplete: resolve,
-								})
-							),
-							new Promise<void>(resolve =>
-								gsap.to(p.R.node, {
-									x: p.R.node.x + 8,
-									duration: 0.06,
-									yoyo: true,
-									repeat: 8,
-									ease: 'sine.inOut',
-									onComplete: resolve,
-								})
-							),
-							new Promise<void>(resolve =>
-								gsap.to(p.R.label, {
-									x: p.R.label.x + 8,
-									duration: 0.06,
-									yoyo: true,
-									repeat: 8,
-									ease: 'sine.inOut',
-									onComplete: resolve,
-								})
-							),
-							new Promise<void>(resolve =>
-								gsap.to(p.L.node, {
-									x: targetXL,
-									y: elimY,
-									duration: 0.9,
-									ease: 'power2.inOut',
-									onComplete: resolve,
-								})
-							),
-							new Promise<void>(resolve =>
-								gsap.to(p.R.node, {
-									x: targetXR,
-									y: elimY,
-									duration: 0.9,
-									ease: 'power2.inOut',
-									onComplete: resolve,
-								})
-							),
-							new Promise<void>(resolve =>
-								gsap.to(p.L.label, {
-									x: targetXL,
-									y: Math.round(
-										elimY -
-											p.L.node.width *
-												0.28 *
-												PLAYER_SCALE_MUL
-									),
-									duration: 0.9,
-									ease: 'power2.inOut',
-									onComplete: resolve,
-								})
-							),
-							new Promise<void>(resolve =>
-								gsap.to(p.R.label, {
-									x: targetXR,
-									y: Math.round(
-										elimY -
-											p.R.node.width *
-												0.28 *
-												PLAYER_SCALE_MUL
-									),
-									duration: 0.9,
-									ease: 'power2.inOut',
-									onComplete: resolve,
-								})
-							),
-						]
-					})
-				)
-				playBeep()
-				await Promise.all(
-					pairs.flatMap(p => [
-						new Promise<void>(resolve =>
-							gsap.to(p.L.node, {
-								alpha: 0,
-								duration: 0.8,
-								scaleX: (p.L.node.scale as any).x * 0.7,
-								scaleY: (p.L.node.scale as any).y * 0.7,
-								ease: 'power2.in',
-								onComplete: resolve,
-							} as any)
-						),
-						new Promise<void>(resolve =>
-							gsap.to(p.R.node, {
-								alpha: 0,
-								duration: 0.8,
-								scaleX: (p.R.node.scale as any).x * 0.7,
-								scaleY: (p.R.node.scale as any).y * 0.7,
-								ease: 'power2.in',
-								onComplete: resolve,
-							} as any)
-						),
-						new Promise<void>(resolve =>
-							gsap.to(p.L.label, {
-								alpha: 0,
-								duration: 0.6,
-								ease: 'power2.in',
-								onComplete: resolve,
-							})
-						),
-						new Promise<void>(resolve =>
-							gsap.to(p.R.label, {
-								alpha: 0,
-								duration: 0.6,
-								ease: 'power2.in',
-								onComplete: resolve,
-							})
-						),
-					])
-				)
-				try {
-					for (const p of pairs) {
-						content.removeChild(p.ringL)
-						content.removeChild(p.ringR)
-					}
-				} catch (_) {}
-
-				// Remove cancelled
-				const leftKeep = leftItems.filter(
-					(_, i) => !limited.some(c => c.leftIdx === i)
-				)
-				const rightKeep = rightItems.filter(
-					(_, j) => !limited.some(c => c.rightIdx === j)
-				)
-				// Remove nodes from scene
-				for (const it of leftItems) {
-					if (!leftKeep.includes(it)) {
-						try {
-							content.removeChild(it.node)
-							content.removeChild(it.label)
-						} catch (_) {}
-					}
-				}
-				for (const it of rightItems) {
-					if (!rightKeep.includes(it)) {
-						try {
-							content.removeChild(it.node)
-							content.removeChild(it.label)
-						} catch (_) {}
-					}
-				}
-				leftItems.splice(0, leftItems.length, ...leftKeep)
-				rightItems.splice(0, rightItems.length, ...rightKeep)
-				layoutRow(leftItems, Math.round(w * 0.25), playersRowY)
-				layoutRow(rightItems, Math.round(w * 0.75), playersRowY)
-				// Show remaining counts
-				const leftCount = new Text({
-					text: `Remaining: ${leftItems.length}`,
-					style: {
-						fontFamily: 'system-ui',
-						fontSize: 16,
-						fill: 0x98ffb3,
-					},
-				})
-				leftCount.anchor = 0.5
-				leftCount.x = Math.round(w * 0.25)
-				leftCount.y = Math.round(playersRowY - 72)
-				content.addChild(leftCount)
-				const rightCount = new Text({
-					text: `Remaining: ${rightItems.length}`,
-					style: {
-						fontFamily: 'system-ui',
-						fontSize: 16,
-						fill: 0x98ffb3,
-					},
-				})
-				rightCount.anchor = 0.5
-				rightCount.x = Math.round(w * 0.75)
-				rightCount.y = Math.round(playersRowY - 72)
-				content.addChild(rightCount)
-				dbgLines[3] = 'Status: cancellations-complete'
-				setDebug([
-					dbgLines[0],
-					dbgLines[1],
-					dbgLines[2],
-					dbgLines[3],
-					'Left remaining: ' + String(leftItems.length),
-					'Right remaining: ' + String(rightItems.length),
-				])
-			}
-		} catch (_) {}
-	}
 	const { gsap } = await import('gsap')
-	const ac = getAudioContext()
-	const playBeep = () => {
-		if (!ac) return
-		try {
-			const t = ac.currentTime
-			const osc = ac.createOscillator()
-			const g = ac.createGain()
-			osc.type = 'sine'
-			osc.frequency.setValueAtTime(740, t)
-			g.gain.setValueAtTime(0.06, t)
-			osc.connect(g).connect(ac.destination)
-			duckBGMTemporary(0.12, 0.01, 0.18, 0.15)
-			osc.start(t)
-			osc.stop(t + 0.18)
-			setTimeout(() => {
-				try {
-					osc.disconnect()
-					g.disconnect()
-				} catch (_) {}
-			}, 240)
-		} catch (_) {}
-	}
 	const showCountdown = async (txt: string, secs: number) => {
 		const title = new Text({
 			text: txt,
@@ -842,19 +483,24 @@ export async function createBattleScene(
 	}
 
 	async function runBattleSequence(res: { phases: BattlePhase[] }) {
+		const phases = res.phases
 		const allLeftItems = [...leftItems]
 		const allRightItems = [...rightItems]
 		const eliminated = new Set<any>()
 
-		for (const phase of res.phases) {
+		// Log phases for debugging
+		console.log('Running Battle Sequence with phases:', phases)
+
+		// Execute Phases
+		for (const phase of phases) {
 			let label = ''
 			let duration = 3
-			if (phase.type === 'symmetric') label = 'Symmetric cancellation in'
+			if (phase.type === 'exact') label = 'Exact Match in'
 			if (phase.type === 'color') {
-				label = 'Color cancellation in'
-				duration = 5
+				label = 'Color Swap in'
+				duration = 3
 			}
-			if (phase.type === 'number') label = 'Number cancellation in'
+			if (phase.type === 'number') label = 'Number Cancel in'
 
 			dbgLines[3] = `Status: ${phase.type}-pending`
 			setDebug(dbgLines)
@@ -865,11 +511,11 @@ export async function createBattleScene(
 
 			// Countdown / Phase Title
 			const phaseName =
-				phase.type === 'symmetric'
+				phase.type === 'exact'
 					? 'EXACT MATCH'
 					: phase.type === 'color'
-					? 'COLOR CLASH'
-					: 'NUMBER CLASH'
+					? 'COLOR SWAP'
+					: 'NUMBER CANCEL'
 
 			const titleText = new Text({
 				text: phaseName,
@@ -991,10 +637,10 @@ export async function createBattleScene(
 			)
 
 			// Execute Actions
-			const anims: any[] = []
 			const elimY = Math.round(chatTopY - 20)
 
 			for (const p of pairs) {
+				const anims: any[] = []
 				if (p.action === 'swap') {
 					// Swap references in arrays for future phases
 					const tmp = allLeftItems[p.lIdx]
@@ -1031,25 +677,22 @@ export async function createBattleScene(
 						gsap.to(p.ringR, { alpha: 0, duration: 0.5 })
 					)
 				} else if (p.action === 'randomize' && p.randVals) {
-					// Randomization Animation
-					const dur = 1.5
-					const obj = { val: 0 }
-					const finalL = p.randVals.left
-					const finalR = p.randVals.right
+					const { left: finalL, right: finalR } = p.randVals
+					const dur = 5.0
 
-					// Spin numbers
+					// Flicker
+					const obj = { val: 0 }
 					anims.push(
 						gsap.to(obj, {
 							val: 100,
 							duration: dur,
 							ease: 'none',
 							onUpdate: () => {
-								// Random flicker effect
 								p.L.label.text = Math.floor(
-									Math.random() * 100
+									Math.random() * 10
 								).toString()
 								p.R.label.text = Math.floor(
-									Math.random() * 100
+									Math.random() * 10
 								).toString()
 							},
 							onComplete: () => {
@@ -1059,75 +702,58 @@ export async function createBattleScene(
 						})
 					)
 
-					// Wait for spin to finish before cancelling
-					// We can chain animations or use delay.
-					// Since we push to `anims` and await Promise.all(anims), they run in parallel.
-					// We need to sequence the cancellation AFTER the spin.
-
-					// Instead of pushing directly, we can create a timeline or a promise chain.
-					// But `anims` expects promises.
-
-					const seq = (async () => {
-						// 1. Spin
-						await new Promise<void>(resolve => {
-							gsap.to(obj, {
-								val: 100,
-								duration: dur,
-								ease: 'none',
-								onUpdate: () => {
-									p.L.label.text = Math.floor(
-										Math.random() * 100
-									).toString()
-									p.R.label.text = Math.floor(
-										Math.random() * 100
-									).toString()
-								},
-								onComplete: () => {
-									p.L.label.text = finalL.toString()
-									p.R.label.text = finalR.toString()
-									resolve()
-								},
+					// Cancellation (delayed)
+					if (finalL > finalR) {
+						eliminated.add(p.L)
+						anims.push(
+							gsap.to(p.L.node, {
+								alpha: 0,
+								y: elimY,
+								duration: 0.5,
+								delay: dur + 0.5,
+							}),
+							gsap.to(p.L.label, {
+								alpha: 0,
+								duration: 0.5,
+								delay: dur + 0.5,
+							}),
+							gsap.to(p.ringL, {
+								alpha: 0,
+								duration: 0.5,
+								delay: dur + 0.5,
+							}),
+							gsap.to(p.ringR, {
+								alpha: 0,
+								duration: 0.5,
+								delay: dur + 0.5,
 							})
-						})
-
-						// 2. Short pause
-						await new Promise(r => setTimeout(r, 300))
-
-						// 3. Cancel the loser
-						const subAnims: any[] = []
-						if (finalL > finalR) {
-							// Cancel Left
-							eliminated.add(p.L)
-							subAnims.push(
-								gsap.to(p.L.node, {
-									x: w / 2 - 20,
-									y: elimY,
-									alpha: 0,
-									duration: 0.8,
-								}),
-								gsap.to(p.L.label, { alpha: 0, duration: 0.5 }),
-								gsap.to(p.ringL, { alpha: 0, duration: 0.5 }),
-								gsap.to(p.ringR, { alpha: 0, duration: 0.5 }) // Hide winner ring too
-							)
-						} else {
-							// Cancel Right
-							eliminated.add(p.R)
-							subAnims.push(
-								gsap.to(p.R.node, {
-									x: w / 2 + 20,
-									y: elimY,
-									alpha: 0,
-									duration: 0.8,
-								}),
-								gsap.to(p.R.label, { alpha: 0, duration: 0.5 }),
-								gsap.to(p.ringR, { alpha: 0, duration: 0.5 }),
-								gsap.to(p.ringL, { alpha: 0, duration: 0.5 })
-							)
-						}
-						await Promise.all(subAnims)
-					})()
-
-					anims.push(seq)
+						)
+					} else {
+						eliminated.add(p.R)
+						anims.push(
+							gsap.to(p.R.node, {
+								alpha: 0,
+								y: elimY,
+								duration: 0.5,
+								delay: dur + 0.5,
+							}),
+							gsap.to(p.R.label, {
+								alpha: 0,
+								duration: 0.5,
+								delay: dur + 0.5,
+							}),
+							gsap.to(p.ringR, {
+								alpha: 0,
+								duration: 0.5,
+								delay: dur + 0.5,
+							}),
+							gsap.to(p.ringL, {
+								alpha: 0,
+								duration: 0.5,
+								delay: dur + 0.5,
+							})
+						)
+					}
 				} else {
 					// Cancellations
 					if (p.action === 'cancel' || p.action === 'cancel_left') {
@@ -1168,8 +794,8 @@ export async function createBattleScene(
 						)
 					}
 				}
+				await Promise.all(anims)
 			}
-			await Promise.all(anims)
 
 			// Cleanup DOM
 			pairs.forEach(p => {
@@ -1207,25 +833,30 @@ export async function createBattleScene(
 				fixedPrizeTable: table,
 				seed: roundSeed || 'live-' + Date.now(),
 				numberMin: 0,
-				numberMax: 99,
+				numberMax: 9,
 				maxMaskSize: 5,
 			}
 			const betRaw = localStorage.getItem('betAmount') || ''
 			const betAmt = Math.max(1, Math.floor(Number(betRaw) || 0))
+			const selfMapped = selfBalls.map(b => ({
+				number: b.number,
+				color: toColorCode(b.color),
+			}))
+			const oppMapped = opponentBalls.map(b => ({
+				number: b.number,
+				color: toColorCode(b.color),
+			}))
+			// Always construct request as A vs B from server perspective
+			// If I am A: playerA=Self, playerB=Opp
+			// If I am B: playerA=Opp, playerB=Self
 			const playerA = {
 				id: 'A',
-				balls: selfBalls.map(b => ({
-					number: b.number,
-					color: toColorCode(b.color),
-				})),
+				balls: selfIdArg === 'A' ? selfMapped : oppMapped,
 				betAmount: betAmt,
 			}
 			const playerB = {
 				id: 'B',
-				balls: opponentBalls.map(b => ({
-					number: b.number,
-					color: toColorCode(b.color),
-				})),
+				balls: selfIdArg === 'A' ? oppMapped : selfMapped,
 				betAmount: betAmt,
 			}
 			const body = { epoch, playerA, playerB }
@@ -1272,7 +903,27 @@ export async function createBattleScene(
 				setDebug(dbgLines)
 			} catch (_) {}
 			countLabel.visible = false
-			await runBattleSequence({ phases: out?.phases || [] })
+			let phases = (out?.phases || []) as BattlePhase[]
+			if (selfIdArg === 'B') {
+				// Swap phases for Player B to match UI (Self on Left)
+				phases = phases.map(p => ({
+					...p,
+					leftIndices: p.rightIndices,
+					rightIndices: p.leftIndices,
+					actions: p.actions?.map(a =>
+						a === 'cancel_left'
+							? 'cancel_right'
+							: a === 'cancel_right'
+							? 'cancel_left'
+							: a
+					),
+					randomizedValues: p.randomizedValues?.map(v => ({
+						left: v.right,
+						right: v.left,
+					})),
+				}))
+			}
+			await runBattleSequence({ phases })
 			dbgLines[3] = 'Status: reveal-pending'
 			setDebug(dbgLines)
 			await runRevealCountdown()
@@ -1281,21 +932,38 @@ export async function createBattleScene(
 					text: 'Winning Set',
 					style: {
 						fontFamily: 'system-ui',
-						fontSize: 26,
+						fontSize: 32,
 						fill: 0xe6f7ff,
+						fontWeight: 'bold',
+						dropShadow: {
+							color: 0x98ffb3,
+							alpha: 0.4,
+							blur: 10,
+							distance: 0,
+						},
 					},
 				})
 				title.anchor = 0.5
 				title.x = Math.round(w / 2)
+				// Pulse the title
+				gsap.to(title.scale, {
+					x: 1.1,
+					y: 1.1,
+					duration: 0.8,
+					yoyo: true,
+					repeat: -1,
+					ease: 'sine.inOut',
+				})
+
 				const panelW = Math.min(620, Math.round(w * 0.72))
 				const panelH = UI_WIN_PANEL_H
 				const panel = new Graphics()
 				panel.roundRect(0, 0, panelW, panelH, 16)
 				panel.fill({ color: 0x0a0f12, alpha: 0.8 })
-				panel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.7 })
+				panel.stroke({ color: 0x98ffb3, width: 4, alpha: 0.9 })
 				panel.x = Math.round(w / 2 - panelW / 2)
 				panel.y = Math.round(winningRowY - panelH / 2)
-				title.y = Math.round(panel.y - 22)
+				title.y = Math.round(panel.y - 30)
 				content.addChild(panel)
 				content.addChild(title)
 				dbgLines[3] = 'Status: reveal-shown'
@@ -1331,10 +999,9 @@ export async function createBattleScene(
 						((it.node as any).userData?.baseWidth as number) ||
 						it.node.width ||
 						1
-					const scaleMul = Math.min(1, targetW / baseW)
-					;(it.node.scale as any).set?.(
-						((it.node.scale as any).x || 1) * scaleMul
-					)
+					// Reduced scale by ~18% (1.3 -> 1.06)
+					const finalScale = (targetW / baseW) * 1.06
+					;(it.node.scale as any).set?.(finalScale)
 					const x = Math.round(
 						panel.x + innerPadX + i * (targetW + gapX) + targetW / 2
 					)
@@ -1345,12 +1012,40 @@ export async function createBattleScene(
 							(((it.node as any).userData
 								?.trailBottomOffset as number) ||
 								it.node.height / 2) *
-								((it.node.scale as any).y || 1)
+								finalScale
 					)
 					it.node.x = x
 					it.node.y = y
 					it.label.x = x
-					it.label.y = Math.round(y - targetW * 0.28)
+					it.label.y = Math.round(y - targetW * 0.28 * 1.06)
+
+					// Entrance animation
+					it.node.alpha = 0
+					it.label.alpha = 0
+					gsap.to(it.node, {
+						alpha: 1,
+						duration: 0.4,
+						delay: i * 0.1,
+						ease: 'power2.out',
+					})
+					gsap.from(it.node.scale, {
+						x: 0,
+						y: 0,
+						duration: 0.6,
+						delay: i * 0.1,
+						ease: 'back.out(1.7)',
+					})
+					gsap.to(it.label, {
+						alpha: 1,
+						duration: 0.4,
+						delay: i * 0.1 + 0.2,
+					})
+					gsap.from(it.label, {
+						y: it.label.y + 20,
+						duration: 0.4,
+						delay: i * 0.1 + 0.2,
+						ease: 'back.out(1.2)',
+					})
 				}
 				root.once('battle:cleanup', () => {
 					try {
@@ -1417,8 +1112,9 @@ export async function createBattleScene(
 				text: 'Revealing in',
 				style: {
 					fontFamily: 'system-ui',
-					fontSize: 18,
+					fontSize: 24,
 					fill: 0xe6f7ff,
+					fontWeight: 'bold',
 				},
 			})
 			revealTitle.anchor = 0.5
@@ -1428,8 +1124,9 @@ export async function createBattleScene(
 				text: '7',
 				style: {
 					fontFamily: 'system-ui',
-					fontSize: 56,
+					fontSize: 64,
 					fill: 0xffe58f,
+					fontWeight: 'bold',
 				},
 			})
 			revealLabel.anchor = 0.5
@@ -1466,7 +1163,6 @@ export async function createBattleScene(
 	}
 	;(async () => {
 		await runSyncedCountdown()
-		await applyCancellations()
 		await onCountdownDone()
 		countLabel.visible = false
 		dbgLines[3] = 'Status: cancellations-complete'

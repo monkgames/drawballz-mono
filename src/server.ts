@@ -81,7 +81,7 @@ function sanitizePlayer(p: PlayerConfig): PlayerConfig {
 		if (!cc) continue
 		if (seen.has(cc)) continue
 		seen.add(cc)
-		const num = Math.max(1, Math.min(99, Number(b.number) || 0))
+		const num = Math.max(0, Math.min(9, Number(b.number) || 0))
 		balls.push({ color: cc, number: num })
 		if (balls.length >= 5) break
 	}
@@ -159,7 +159,7 @@ app.post('/player/:id/ball', (req, res) => {
 			color = colorMap[body.color.toLowerCase()] || null
 		}
 		const number = Number(body.number)
-		if (!color || !Number.isFinite(number) || number < 1 || number > 99) {
+		if (!color || !Number.isFinite(number) || number < 0 || number > 9) {
 			res.status(400).json({ error: 'invalid ball payload' })
 			return
 		}
@@ -424,7 +424,7 @@ try {
 				} else if (typeof rawColor === 'string') {
 					color = colorMap[String(rawColor).toLowerCase()] || null
 				}
-				const number = Math.max(1, Math.min(99, Number(msg.number)))
+				const number = Math.max(0, Math.min(9, Number(msg.number)))
 				const betAmount = Number(msg.betAmount)
 				const rawOrder = Array.isArray((msg as any).slotOrder)
 					? ((msg as any).slotOrder as any[])

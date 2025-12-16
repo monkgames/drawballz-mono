@@ -42,13 +42,8 @@ export function simulateBattle(
 	// Phase 1: Symmetric (Same Position, Same Color, Same Number)
 	const symLeft: number[] = []
 	const symRight: number[] = []
-	const symActions: (
-		| 'cancel'
-		| 'swap'
-		| 'cancel_left'
-		| 'cancel_right'
-		| 'randomize'
-	)[] = []
+	const symActions: ('cancel' | 'swap' | 'cancel_left' | 'cancel_right')[] =
+		[]
 
 	for (let i = 0; i < len; i++) {
 		const l = leftBalls[i]
@@ -64,41 +59,34 @@ export function simulateBattle(
 
 	if (symLeft.length > 0) {
 		phases.push({
-			type: 'symmetric',
+			type: 'exact',
 			leftIndices: symLeft,
 			rightIndices: symRight,
 			actions: symActions,
 		})
 	}
 
-	// Phase 2: Symmetric Color Clash (Same Position, Same Color, Diff Number)
-	// Logic: Cancel ball with HIGHER number
+	// Phase 2: Color Swap (Same Position, Same Color, irrespective of number)
+	// Logic: SWAP balls
 	const clashLeft: number[] = []
 	const clashRight: number[] = []
-	const clashActions: (
-		| 'cancel'
-		| 'swap'
-		| 'cancel_left'
-		| 'cancel_right'
-		| 'randomize'
-	)[] = []
+	const clashActions: ('cancel' | 'swap' | 'cancel_left' | 'cancel_right')[] =
+		[]
 
 	for (let i = 0; i < len; i++) {
 		if (!leftActive[i] || !rightActive[i]) continue
 		const l = leftBalls[i]
 		const r = rightBalls[i]
 		if (l.color === r.color) {
-			// Numbers must be different (Phase 1 handled equality)
+			// Numbers could be anything (though Phase 1 removed exact matches)
 			clashLeft.push(i)
 			clashRight.push(i)
+			clashActions.push('swap')
 
-			if (l.number > r.number) {
-				clashActions.push('cancel_left')
-				leftActive[i] = false
-			} else {
-				clashActions.push('cancel_right')
-				rightActive[i] = false
-			}
+			// Swap in memory
+			const tmp = leftBalls[i]
+			leftBalls[i] = rightBalls[i]
+			rightBalls[i] = tmp
 		}
 	}
 
@@ -111,10 +99,8 @@ export function simulateBattle(
 		})
 	}
 
-	// REMOVED Phase 3: General Color Cancel
-
-	// Phase 4 (now 3): Symmetric Number Clash (Same Position, Same Number, Diff Color)
-	// Logic: SWAP balls
+	// Phase 3: Number Cancel (Same Position, Same Number, irrespective of color)
+	// Logic: Randomize numbers, then cancel highest
 	const randLeft: number[] = []
 	const randRight: number[] = []
 	const randActions: (
@@ -124,21 +110,36 @@ export function simulateBattle(
 		| 'cancel_right'
 		| 'randomize'
 	)[] = []
+	const randValues: { left: number; right: number }[] = []
 
 	for (let i = 0; i < len; i++) {
 		if (!leftActive[i] || !rightActive[i]) continue
 		const l = leftBalls[i]
 		const r = rightBalls[i]
 		if (l.number === r.number) {
-			// Colors must be different (Phase 1/2 handled same color)
+			// Colors could be anything
 			randLeft.push(i)
 			randRight.push(i)
-			randActions.push('swap')
+			randActions.push('randomize')
 
-			// Swap in memory
-			const tmp = leftBalls[i]
-			leftBalls[i] = rightBalls[i]
-			rightBalls[i] = tmp
+			let newL, newR
+			do {
+				newL = Math.floor(rand() * 10) // 0-9
+				newR = Math.floor(rand() * 10) // 0-9
+			} while (newL === newR)
+
+			randValues.push({ left: newL, right: newR })
+
+			// Update balls
+			leftBalls[i].number = newL
+			rightBalls[i].number = newR
+
+			// Cancel highest
+			if (newL > newR) {
+				leftActive[i] = false
+			} else {
+				rightActive[i] = false
+			}
 		}
 	}
 
@@ -148,6 +149,7 @@ export function simulateBattle(
 			leftIndices: randLeft,
 			rightIndices: randRight,
 			actions: randActions,
+			randomizedValues: randValues,
 		})
 	}
 

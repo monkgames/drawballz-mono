@@ -28,7 +28,7 @@ export interface MatchInput {
 }
 
 export interface BattlePhase {
-	type: 'symmetric' | 'color' | 'number'
+	type: 'exact' | 'color' | 'number'
 	leftIndices: number[]
 	rightIndices: number[]
 	actions?: (
