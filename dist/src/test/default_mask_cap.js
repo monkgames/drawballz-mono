@@ -3,7 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const engine_1 = require("../engine");
 function mkEpochNoCap(seed) {
     return {
-        maskSizeDistribution: { 0: 0.0, 1: 0.2, 2: 0.2, 3: 0.2, 4: 0.2, 5: 0.2 },
+        maskSizeDistribution: {
+            0: 0.0,
+            1: 0.2,
+            2: 0.2,
+            3: 0.2,
+            4: 0.2,
+            5: 0.2,
+        },
         fixedPrizeTable: { 0: 0, 1: 0.2, 2: 0.8, 3: 2, 4: 10, 5: 50 },
         seed,
         numberMin: 0,

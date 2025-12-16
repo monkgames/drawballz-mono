@@ -5,8 +5,8 @@ function mkEpoch(seed) {
     return {
         maskSizeDistribution: {
             0: 0.05,
-            1: 0.20,
-            2: 0.30,
+            1: 0.2,
+            2: 0.3,
             3: 0.25,
             4: 0.15,
             5: 0.05,

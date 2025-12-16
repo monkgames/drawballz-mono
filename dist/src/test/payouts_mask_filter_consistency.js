@@ -3,7 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const engine_1 = require("../engine");
 function mkEpoch(seed) {
     return {
-        maskSizeDistribution: { 0: 0.0, 1: 0.2, 2: 0.25, 3: 0.25, 4: 0.2, 5: 0.1 },
+        maskSizeDistribution: {
+            0: 0.0,
+            1: 0.2,
+            2: 0.25,
+            3: 0.25,
+            4: 0.2,
+            5: 0.1,
+        },
         fixedPrizeTable: { 0: 0, 1: 1, 2: 2, 3: 5, 4: 20, 5: 100 },
         seed,
         numberMin: 0,
