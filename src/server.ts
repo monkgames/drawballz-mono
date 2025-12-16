@@ -3,6 +3,7 @@ import http from 'http'
 import path from 'path'
 import fs from 'fs'
 import { evaluateBatch, evaluateBatchCompact, evaluateMatch } from './engine'
+import { simulateBattle } from './battle_logic'
 import {
 	BatchRequest,
 	CompactBatchRequest,
@@ -56,6 +57,13 @@ const prizeTable: Record<number, number> = {
 	4: 200,
 	5: 1000,
 }
+const colorWeights: Record<string, number> = {
+	green: 10,
+	pink: 20,
+	orange: 30,
+	yellow: 40,
+	blue: 50,
+}
 function resolveColor(c: Color | string): Color | null {
 	if (typeof c === 'number') {
 		const n = Math.floor(c)
@@ -77,7 +85,9 @@ function sanitizePlayer(p: PlayerConfig): PlayerConfig {
 		balls.push({ color: cc, number: num })
 		if (balls.length >= 5) break
 	}
-	return { id: p.id, balls, betAmount: p.betAmount }
+	// Canonicalize order by color ascending to ensure determinism for clients/tests
+	const ordered = balls.slice().sort((a, b) => a.color - b.color)
+	return { id: p.id, balls: ordered, betAmount: p.betAmount }
 }
 const players: Record<string, PlayerConfig> = {
 	A: { id: 'A', balls: [], betAmount: 1 },
@@ -100,6 +110,14 @@ app.get('/health', (_req, res) => {
 app.get('/prize', (_req, res) => {
 	try {
 		res.json({ table: prizeTable })
+	} catch (e: any) {
+		res.status(400).json({ error: String(e.message ?? e) })
+	}
+})
+
+app.get('/weights', (_req, res) => {
+	try {
+		res.json({ ok: true, weights: colorWeights })
 	} catch (e: any) {
 		res.status(400).json({ error: String(e.message ?? e) })
 	}
@@ -162,6 +180,27 @@ app.post('/player/:id/ball', (req, res) => {
 		}
 		players[id] = { ...p }
 		res.json({ ok: true, player: players[id] })
+	} catch (e: any) {
+		res.status(400).json({ error: String(e.message ?? e) })
+	}
+})
+
+app.post('/simulate/battle', (req, res) => {
+	try {
+		const body = req.body as {
+			leftBalls: Ball[]
+			rightBalls: Ball[]
+		}
+		if (!Array.isArray(body.leftBalls) || !Array.isArray(body.rightBalls)) {
+			res.status(400).json({ error: 'invalid balls' })
+			return
+		}
+		const result = simulateBattle(
+			body.leftBalls,
+			body.rightBalls,
+			colorWeights
+		)
+		res.json({ ok: true, result })
 	} catch (e: any) {
 		res.status(400).json({ error: String(e.message ?? e) })
 	}

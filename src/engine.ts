@@ -9,6 +9,7 @@ import {
 	MatchInput,
 	Outcome,
 } from './types'
+import { simulateBattle } from './battle_logic'
 
 function validatePlayerBalls(
 	balls: ReadonlyArray<{ number: number; color: Color }>,
@@ -125,25 +126,63 @@ export function evaluateMatch(input: MatchInput): Outcome {
 	if (issues.length) {
 		throw new Error(issues.join('; '))
 	}
+
+	const colorWeights: Record<string, number> = {
+		green: 10,
+		pink: 20,
+		orange: 30,
+		yellow: 40,
+		blue: 50,
+	}
+
+	const leftBalls = [...input.playerA.balls]
+	const rightBalls = [...input.playerB.balls]
+
+	const battleRes = simulateBattle(
+		leftBalls,
+		rightBalls,
+		colorWeights,
+		epoch.seed + ':' + (input.salt || '')
+	)
+
 	const ra: Ball[] = []
+	for (const i of battleRes.remainingLeftIndices) ra.push(leftBalls[i])
+
 	const rb: Ball[] = []
+	for (const i of battleRes.remainingRightIndices) rb.push(rightBalls[i])
+
 	const cancelled: Ball[] = []
 	const stackdata: { step: number; cancelled: ReadonlyArray<Ball> }[] = []
-	const byColorA = new Map<Color, Ball>()
-	const byColorB = new Map<Color, Ball>()
-	for (const b of input.playerA.balls) byColorA.set(b.color, b)
-	for (const b of input.playerB.balls) byColorB.set(b.color, b)
-	let stepIdx = 0
-	for (let c = 1 as Color; c <= 5; c = (c + 1) as Color) {
-		const a = byColorA.get(c)
-		const b = byColorB.get(c)
-		if (a && b && a.number === b.number) {
-			cancelled.push(a)
-			stepIdx++
-			stackdata.push({ step: stepIdx, cancelled: [a, b] })
-		} else {
-			if (a) ra.push(a)
-			if (b) rb.push(b)
+
+	let step = 1
+	for (const phase of battleRes.phases) {
+		const phaseCancelled: Ball[] = []
+		for (let k = 0; k < phase.leftIndices.length; k++) {
+			const lIdx = phase.leftIndices[k]
+			const rIdx = phase.rightIndices[k]
+			const action = phase.actions?.[k] || 'cancel'
+
+			if (action === 'cancel' || action === 'cancel_left') {
+				phaseCancelled.push(leftBalls[lIdx])
+			}
+			if (action === 'cancel' || action === 'cancel_right') {
+				phaseCancelled.push(rightBalls[rIdx])
+			}
+			if (action === 'randomize') {
+				const vals = phase.randomizedValues?.[k]
+				if (vals) {
+					if (vals.left > vals.right) {
+						phaseCancelled.push(leftBalls[lIdx])
+					} else {
+						phaseCancelled.push(rightBalls[rIdx])
+					}
+				}
+			}
+		}
+
+		if (phaseCancelled.length > 0) {
+			stackdata.push({ step: step++, cancelled: phaseCancelled })
+			cancelled.push(...phaseCancelled)
 		}
 	}
 	const eliminatedNumbers: number[] = []
@@ -212,6 +251,7 @@ export function evaluateMatch(input: MatchInput): Outcome {
 		eliminatedNumbers,
 		stackdata,
 		rewardPool,
+		phases: battleRes.phases,
 	}
 }
 

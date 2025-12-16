@@ -77,6 +77,13 @@ const prizeTable = {
     4: 200,
     5: 1000,
 };
+const colorWeights = {
+    green: 1,
+    pink: 2,
+    orange: 3,
+    yellow: 4,
+    blue: 5,
+};
 function resolveColor(c) {
     if (typeof c === 'number') {
         const n = Math.floor(c);
@@ -101,7 +108,9 @@ function sanitizePlayer(p) {
         if (balls.length >= 5)
             break;
     }
-    return { id: p.id, balls, betAmount: p.betAmount };
+    // Canonicalize order by color ascending to ensure determinism for clients/tests
+    const ordered = balls.slice().sort((a, b) => a.color - b.color);
+    return { id: p.id, balls: ordered, betAmount: p.betAmount };
 }
 const players = {
     A: { id: 'A', balls: [], betAmount: 1 },
@@ -122,6 +131,14 @@ app.get('/health', (_req, res) => {
 app.get('/prize', (_req, res) => {
     try {
         res.json({ table: prizeTable });
+    }
+    catch (e) {
+        res.status(400).json({ error: String(e.message ?? e) });
+    }
+});
+app.get('/weights', (_req, res) => {
+    try {
+        res.json({ ok: true, weights: colorWeights });
     }
     catch (e) {
         res.status(400).json({ error: String(e.message ?? e) });

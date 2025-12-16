@@ -27,6 +27,26 @@ export interface MatchInput {
 	salt?: string
 }
 
+export interface BattlePhase {
+	type: 'symmetric' | 'color' | 'number'
+	leftIndices: number[]
+	rightIndices: number[]
+	actions?: (
+		| 'cancel'
+		| 'swap'
+		| 'cancel_left'
+		| 'cancel_right'
+		| 'randomize'
+	)[]
+	randomizedValues?: { left: number; right: number }[]
+}
+
+export interface BattleResult {
+	phases: BattlePhase[]
+	remainingLeftIndices: number[]
+	remainingRightIndices: number[]
+}
+
 export interface Outcome {
 	m: number
 	prize: number
@@ -35,6 +55,7 @@ export interface Outcome {
 	remainingB: ReadonlyArray<Ball>
 	cancelled: ReadonlyArray<Ball>
 	eliminatedNumbers: ReadonlyArray<number>
+	phases?: BattlePhase[]
 	stackdata?: ReadonlyArray<{
 		step: number
 		cancelled: ReadonlyArray<Ball>

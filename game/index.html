@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<title>Three.js Game</title>
+		<link rel="stylesheet" href="./styles.css" />
+	</head>
+	<body>
+		<div
+			id="nameOverlay"
+			style="
+				position: fixed;
+				inset: 0;
+				display: grid;
+				place-items: center;
+				background: rgba(14, 14, 18, 0.9);
+				z-index: 1000;
+			">
+			<div
+				style="
+					width: 320px;
+					max-width: 90vw;
+					padding: 20px;
+					border-radius: 12px;
+					background: #0a0f12;
+					border: 2px solid #98ffb3;
+					box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+				">
+				<div
+					style="
+						font-size: 18px;
+						color: #e6f7ff;
+						margin-bottom: 12px;
+						text-align: center;
+					">
+					Enter Display Name
+				</div>
+				<input
+					id="nameInput"
+					type="text"
+					maxlength="24"
+					placeholder="Your name"
+					style="
+						width: 100%;
+						padding: 12px 14px;
+						border-radius: 8px;
+						border: 1px solid #29423d;
+						background: #0e0e12;
+						color: #fff;
+						outline: none;
+					" />
+				<button
+					id="nameSubmit"
+					style="
+						margin-top: 14px;
+						width: 100%;
+						padding: 12px 14px;
+						border-radius: 8px;
+						border: 0;
+						background: #98ffb3;
+						color: #000;
+						font-weight: 600;
+						cursor: pointer;
+					">
+					Continue
+				</button>
+			</div>
+		</div>
+		<script type="module" src="/src/main.ts"></script>
+	</body>
+</html>
