@@ -1,9 +1,9 @@
 services:
-  - type: web
-    name: drawballz-server
-    env: node
-    buildCommand: npm install && npm run build
-    startCommand: npm run server
-    envVars:
-      - key: PORT
-        value: 10000
+    - type: web
+      name: drawballz-server
+      env: node
+      buildCommand: npm install && npm run build
+      startCommand: npm start
+      envVars:
+          - key: PORT
+            value: 10000

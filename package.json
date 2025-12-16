@@ -5,6 +5,7 @@
 	"type": "commonjs",
 	"scripts": {
 		"build": "tsc -p tsconfig.json && cd game && npm install && npm run build",
+		"start": "node dist/src/server.js",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"dev": "npm run build && MONO_DEV=1 node dist/src/server.js",
 		"server": "npm run build && node dist/src/server.js",
