@@ -45,6 +45,10 @@ const DEV_DEMO_CANCEL = false
 let SERVER_BASE: string | null = null
 let suppressConfigureUntil = 0
 async function resolveServerBase(): Promise<string> {
+	const env = (import.meta as any).env
+	if (env?.VITE_API_URL) {
+		return env.VITE_API_URL
+	}
 	const origin = window.location.origin
 	try {
 		const r = await fetch(`${origin}/health`, { method: 'GET' })
