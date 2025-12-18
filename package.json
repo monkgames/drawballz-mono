@@ -3,6 +3,9 @@
 	"version": "0.0.1",
 	"private": true,
 	"type": "commonjs",
+	"engines": {
+		"node": ">=18.x"
+	},
 	"scripts": {
 		"build": "tsc -p tsconfig.json && cd game && npm install && npm run build",
 		"start": "node dist/src/server.js",
@@ -14,7 +17,7 @@
 		"test:portcfg": "npm run build && node dist/src/test/port_endpoint_config_e2e.js",
 		"test:frontendport": "npm run build && node dist/src/test/frontend_port_e2e.js",
 		"test:round": "npm run build && node dist/src/test/round_consistency_e2e.js",
-		"test:ballcfg": "npm run build && node dist/src/test/ball_config_e2e.js",
+		"tesst:ballcfg": "npm run build && node dist/src/test/ball_config_e2e.js",
 		"test:cfgsync": "npm run build && node dist/src/test/frontend_config_sync_e2e.js",
 		"test:playerspayload": "npm run build && node dist/src/test/match_players_payload_e2e.js",
 		"spec:pdf": "node scripts/compile_spec_pdf.js",

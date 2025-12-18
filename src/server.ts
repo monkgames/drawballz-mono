@@ -365,6 +365,27 @@ try {
 				msg = JSON.parse(String(data))
 			} catch (_) {}
 			if (!msg || typeof msg !== 'object') return
+			if (
+				msg.type === 'rtc:offer' ||
+				msg.type === 'rtc:answer' ||
+				msg.type === 'rtc:ice'
+			) {
+				const room = assigned?.roomId || ''
+				for (const c of clients) {
+					if (c.roomId === room && c !== assigned) {
+						try {
+							c.socket.send(
+								JSON.stringify({
+									type: msg.type,
+									payload: msg.payload || null,
+									from: assigned?.playerId || null,
+								})
+							)
+						} catch (_) {}
+					}
+				}
+				return
+			}
 			if (msg.type === 'join') {
 				if (!pendingSeat) {
 					pendingSeat = {

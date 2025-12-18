@@ -1,9 +1,12 @@
 services:
     - type: web
-      name: drawballz-server
+      name: drawballz-simulation
       env: node
+      plan: free
       buildCommand: npm install && npm run build
-      startCommand: npm start
+      startCommand: npm run start
+      autoDeploy: true
+      healthCheckPath: /health
       envVars:
-          - key: PORT
-            value: 10000
+          - key: NODE_ENV
+            value: production

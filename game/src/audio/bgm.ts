@@ -54,11 +54,30 @@ export async function prefetchBGM() {
 	if (!ac) return
 	if (trimmedCache) return
 	try {
-		const resp = await fetch('/assets/sfx/test.mp3', {
-			cache: 'force-cache',
-		})
-		const buf = await resp.arrayBuffer()
-		cachedBuffer = await ac.decodeAudioData(buf)
+		let buf: ArrayBuffer | null = null
+		let fromBgPlay = false
+		try {
+			const respPlay = await fetch('/assets/sfx/bg_play.mp3', {
+				cache: 'force-cache',
+			})
+			if (respPlay.ok) {
+				buf = await respPlay.arrayBuffer()
+				fromBgPlay = true
+			}
+		} catch (_) {}
+		if (!buf) {
+			const resp = await fetch('/assets/sfx/test.mp3', {
+				cache: 'force-cache',
+			})
+			buf = await resp.arrayBuffer()
+		}
+		const decoded = await ac.decodeAudioData(buf)
+		if (fromBgPlay) {
+			trimmedCache = decoded
+			cachedBuffer = null
+			return
+		}
+		cachedBuffer = decoded
 		const sr = cachedBuffer.sampleRate
 		const D = cachedBuffer.duration
 		const start = Math.max(8, D * 0.25)
@@ -198,7 +217,8 @@ export function isBGMStarted() {
 export async function startBGMElement() {
 	if (mediaEl) return
 	const el = document.createElement('audio')
-	el.src = '/assets/sfx/test.mp3'
+	let triedFallback = false
+	el.src = '/assets/sfx/bg_play.mp3'
 	el.crossOrigin = 'anonymous'
 	el.loop = true
 	el.preload = 'auto'
@@ -208,6 +228,14 @@ export async function startBGMElement() {
 	el.setAttribute('playsinline', '')
 	el.setAttribute('webkit-playsinline', '')
 	el.style.display = 'none'
+	el.addEventListener('error', () => {
+		if (triedFallback) return
+		triedFallback = true
+		el.src = '/assets/sfx/test.mp3'
+		try {
+			void el.play()
+		} catch (_) {}
+	})
 	document.body.appendChild(el)
 	mediaEl = el
 	try {

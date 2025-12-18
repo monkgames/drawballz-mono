@@ -51,10 +51,12 @@ const LOCK_POSITIONS = true
 let LOCKED_YELLOW_GAPS: number[] | null = null
 
 async function loadBackgroundTexture(): Promise<Texture | null> {
-	const dpr = Math.min(window.devicePixelRatio || 1, 2)
-	const hiRes = dpr > 1
+	const useHiRes =
+		!isSlowNetwork() &&
+		!isMobileDevice() &&
+		(window.devicePixelRatio || 1) > 1
 	const candidates: string[] = []
-	if (hiRes) {
+	if (useHiRes) {
 		candidates.push(
 			'/assets/bg/bg_base@2x.webp',
 			'/assets/bg/bg_base@2x.jpg',
@@ -65,9 +67,9 @@ async function loadBackgroundTexture(): Promise<Texture | null> {
 		'/assets/bg/bg_base.webp',
 		'/assets/bg/bg_base.jpg',
 		'/assets/bg/bg_base.png',
-		'/bg/assets/bg_base.webp',
-		'/bg/assets/bg_base.jpg',
-		'/bg/assets/bg_base.png'
+		'/bg/bg_base.webp',
+		'/bg/bg_base.jpg',
+		'/bg/bg_base.png'
 	)
 	for (const url of candidates) {
 		try {
@@ -81,11 +83,13 @@ async function loadBackgroundTexture(): Promise<Texture | null> {
 }
 
 async function loadBackgroundOverlayTexture(): Promise<Texture | null> {
-	const dpr = Math.min(window.devicePixelRatio || 1, 2)
-	const atlasCandidates =
-		dpr > 1
-			? ['/assets/atlases/ui@2x.json', '/assets/atlases/bg@2x.json']
-			: ['/assets/atlases/ui.json', '/assets/atlases/bg.json']
+	const useHiRes =
+		!isSlowNetwork() &&
+		!isMobileDevice() &&
+		(window.devicePixelRatio || 1) > 1
+	const atlasCandidates = useHiRes
+		? ['/assets/atlases/ui@2x.json', '/assets/atlases/bg@2x.json']
+		: ['/assets/atlases/ui.json', '/assets/atlases/bg.json']
 	for (const a of atlasCandidates) {
 		try {
 			const sheet: any = await Assets.load(a)
@@ -97,7 +101,12 @@ async function loadBackgroundOverlayTexture(): Promise<Texture | null> {
 			}
 		} catch (_) {}
 	}
-	const candidates = ['/assets/bg/bg_layer.png', '/bg/assets/bg_layer.png']
+	const candidates = [
+		'/assets/bg/bg_layer.webp',
+		'/assets/bg/bg_layer.png',
+		'/bg/bg_layer.webp',
+		'/bg/bg_layer.png',
+	]
 	for (const url of candidates) {
 		try {
 			const tex = await Assets.load(url)
@@ -111,10 +120,7 @@ async function loadBackgroundVideoSprite(): Promise<Sprite | null> {
 	try {
 		if (isSlowNetwork()) return null
 		const video = document.createElement('video')
-		const candidates = [
-			'/assets/bg/spaceship-haunts.mp4',
-			'/bg/spaceship-haunts.mp4',
-		]
+		const candidates = ['/assets/bg/video_bg.webm', '/bg/video_bg.webm']
 		video.src = candidates[0]
 		video.crossOrigin = 'anonymous'
 		video.muted = true
@@ -180,40 +186,43 @@ async function loadLogoTexture(): Promise<Texture | null> {
 }
 
 export async function createHomeScene(w: number, h: number) {
-	const root = new Container()
-	const content = new Container()
-	content.sortableChildren = true
-	root.addChild(content)
-	let bgLayer: Sprite | Graphics | null = null
-	let bgIsVideo = false
+    const root = new Container()
+    const content = new Container()
+    content.sortableChildren = true
+    root.addChild(content)
+    const bgGroup = new Container()
+    bgGroup.eventMode = 'none'
+    content.addChildAt(bgGroup, 0)
+    let bgLayer: Sprite | Graphics | null = null
+    let bgIsVideo = false
 
-	// Add immediate solid background to avoid any blank stage
-	const bgSolid = makeBackground(DESIGN_W, DESIGN_H)
-	content.addChild(bgSolid)
-	bgLayer = bgSolid
+    // Add immediate solid background to avoid any blank stage
+    const bgSolid = makeBackground(DESIGN_W, DESIGN_H)
+    bgGroup.addChild(bgSolid)
+    bgLayer = bgSolid
 	const baseTexPromise = loadBackgroundTexture()
 	const bgVideoPromise = loadBackgroundVideoSprite()
 	void (async () => {
 		const bgTex = await baseTexPromise
-		if (bgTex && !bgIsVideo) {
-			const sprite = new Sprite({ texture: bgTex })
-			sprite.anchor = 0.5
-			sprite.x = DESIGN_W / 2
-			sprite.y = DESIGN_H / 2
-			const scale = Math.max(
-				DESIGN_W / bgTex.width,
-				DESIGN_H / bgTex.height
-			)
-			sprite.scale.set(scale)
-			content.addChildAt(sprite, 0)
-			if (bgLayer) {
-				try {
-					content.removeChild(bgLayer)
-				} catch (_) {}
-			}
-			bgLayer = sprite
-			if (!isMobileDevice()) {
-				gsap.to(sprite, {
+        if (bgTex && !bgIsVideo) {
+            const sprite = new Sprite({ texture: bgTex })
+            sprite.anchor = 0.5
+            sprite.x = DESIGN_W / 2
+            sprite.y = DESIGN_H / 2
+            const scale = Math.max(
+                DESIGN_W / bgTex.width,
+                DESIGN_H / bgTex.height
+            )
+            sprite.scale.set(scale)
+            bgGroup.addChildAt(sprite, 0)
+            if (bgLayer) {
+                try {
+                    bgGroup.removeChild(bgLayer)
+                } catch (_) {}
+            }
+            bgLayer = sprite
+            if (!isMobileDevice()) {
+                gsap.to(sprite, {
 					rotation: 0.01,
 					yoyo: true,
 					repeat: -1,
@@ -233,25 +242,25 @@ export async function createHomeScene(w: number, h: number) {
 	})()
 	void (async () => {
 		const bgVideo = await bgVideoPromise
-		if (bgVideo) {
-			bgIsVideo = true
-			const sprite = bgVideo
-			sprite.anchor = 0.5
-			sprite.x = DESIGN_W / 2
-			sprite.y = DESIGN_H / 2
-			const texW = sprite.texture.width || 1
-			const texH = sprite.texture.height || 1
-			const scale = Math.max(DESIGN_W / texW, DESIGN_H / texH)
-			sprite.scale.set(scale)
-			content.addChildAt(sprite, 0)
-			if (bgLayer) {
-				try {
-					content.removeChild(bgLayer)
-				} catch (_) {}
-			}
-			bgLayer = sprite
-			if (!isMobileDevice()) {
-				gsap.to(sprite, {
+        if (bgVideo) {
+            bgIsVideo = true
+            const sprite = bgVideo
+            sprite.anchor = 0.5
+            sprite.x = DESIGN_W / 2
+            sprite.y = DESIGN_H / 2
+            const texW = sprite.texture.width || 1
+            const texH = sprite.texture.height || 1
+            const scale = Math.max(DESIGN_W / texW, DESIGN_H / texH)
+            sprite.scale.set(scale)
+            bgGroup.addChildAt(sprite, 0)
+            if (bgLayer) {
+                try {
+                    bgGroup.removeChild(bgLayer)
+                } catch (_) {}
+            }
+            bgLayer = sprite
+            if (!isMobileDevice()) {
+                gsap.to(sprite, {
 					rotation: 0.01,
 					yoyo: true,
 					repeat: -1,
@@ -267,42 +276,39 @@ export async function createHomeScene(w: number, h: number) {
 					ease: 'sine.inOut',
 				})
 			}
-		}
-	})()
-
-	{
-		const overlayTex = await loadBackgroundOverlayTexture()
-		if (overlayTex) {
-			const overlay = new Sprite({ texture: overlayTex })
-			overlay.anchor = 0.5
-			overlay.x = DESIGN_W / 2
-			overlay.y = DESIGN_H / 2
-			const s = Math.max(
-				DESIGN_W / overlayTex.width,
-				DESIGN_H / overlayTex.height
-			)
-			overlay.scale.set(s)
-			content.addChild(overlay)
-			if (!isMobileDevice()) {
-				gsap.to(overlay, {
-					y: overlay.y + 8,
-					rotation: 0.01,
-					yoyo: true,
-					repeat: -1,
-					duration: 6,
-					ease: 'sine.inOut',
-				})
-				gsap.to(overlay.scale, {
-					x: s * 1.01,
-					y: s * 1.01,
-					yoyo: true,
-					repeat: -1,
-					duration: 10,
-					ease: 'sine.inOut',
-				})
-			}
-		}
-	}
+            const overlayTex = await loadBackgroundOverlayTexture()
+            if (overlayTex) {
+                const overlay = new Sprite({ texture: overlayTex })
+                overlay.anchor = 0.5
+                overlay.x = DESIGN_W / 2
+                overlay.y = DESIGN_H / 2
+                const s = Math.max(
+                    DESIGN_W / overlayTex.width,
+                    DESIGN_H / overlayTex.height
+                )
+                overlay.scale.set(s)
+                bgGroup.addChild(overlay)
+                if (!isMobileDevice()) {
+                    gsap.to(overlay, {
+                        y: overlay.y + 8,
+                        rotation: 0.01,
+                        yoyo: true,
+                        repeat: -1,
+                        duration: 6,
+                        ease: 'sine.inOut',
+                    })
+                    gsap.to(overlay.scale, {
+                        x: s * 1.01,
+                        y: s * 1.01,
+                        yoyo: true,
+                        repeat: -1,
+                        duration: 10,
+                        ease: 'sine.inOut',
+                    })
+                }
+            }
+        }
+    })()
 
 	const bgFX = new Container()
 	content.addChild(bgFX)

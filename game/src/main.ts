@@ -686,6 +686,22 @@ async function layout() {
 							try {
 								;(window as any).__battle = battle
 							} catch (_) {}
+							try {
+								const { createRTC } = await import('@/net/rtc')
+								const rtc = createRTC(
+									socket as any,
+									(selfId as any) || 'A'
+								)
+								await rtc.start()
+								;(battle as any).once?.(
+									'battle:cleanup',
+									() => {
+										try {
+											rtc.stop()
+										} catch (_) {}
+									}
+								)
+							} catch (_) {}
 							;(battle as any).on('sendChat', (text: string) => {
 								try {
 									socket?.send({ type: 'chat:send', text })
@@ -1204,9 +1220,10 @@ async function layout() {
 	}
 }
 async function boot() {
-	const DPR = Math.min(window.devicePixelRatio || 1, 2)
+	const lowEnd = isSlowNetwork() || isMobileDevice()
+	const DPR = lowEnd ? 1 : Math.min(window.devicePixelRatio || 1, 2)
 	await app.init({
-		antialias: true,
+		antialias: lowEnd ? false : true,
 		backgroundAlpha: 0,
 		resolution: DPR,
 	})
@@ -1260,9 +1277,9 @@ async function boot() {
 	// background preload of heavier assets when network is decent
 	if (!isSlowNetwork()) {
 		const preload = [
-			'/assets/bg/spaceship-haunts.mp4',
-			'/assets/bg/bg_base.png',
-			'/assets/bg/bg_layer.png',
+			// avoid preloading heavy video on boot
+			'/assets/bg/bg_base.webp',
+			'/assets/bg/bg_layer.webp',
 			'/assets/sprites/balls/green.svg',
 			'/assets/sprites/balls/pink.svg',
 			'/assets/sprites/balls/orange.svg',

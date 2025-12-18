@@ -1,19 +1,24 @@
 import { Container, Graphics, Sprite, Texture } from 'pixi.js'
 import { startBGMOnce, ensureAudioUnlocked, prefetchBGM } from '@/audio/bgm'
+import { isMobileDevice, isSlowNetwork } from '@/util/env'
 
 async function loadSplashVideoSprite(
 	w: number,
 	h: number
 ): Promise<{ sprite: Sprite; video: HTMLVideoElement } | null> {
 	try {
+		if (isSlowNetwork() || isMobileDevice()) {
+			return null
+		}
 		const video = document.createElement('video')
 		const candidates = [
-			'/assets/bg/splash_load.webm',
-			'/bg/splash_load.webm',
+			// Prefer formats we actually ship
 			'/assets/bg/splash_load.mp4',
 			'/bg/splash_load.mp4',
 			'/assets/bg/splash_load.mov',
 			'/bg/splash_load.mov',
+			'/assets/bg/splash_load.webm',
+			'/bg/splash_load.webm',
 		]
 		let idx = 0
 		video.src = candidates[0]
@@ -99,8 +104,32 @@ export async function createSplashScene(w: number, h: number) {
 			},
 			{ once: true }
 		)
+	} else {
+		// Fallback: light static image for low-end/slow networks
+		try {
+			const tex = (await (
+				await import('pixi.js')
+			).Assets.load('/assets/bg/splash_ig5.png')) as unknown as Texture
+			const sprite = new Sprite({ texture: tex })
+			sprite.anchor = 0.5
+			sprite.x = Math.round(w / 2)
+			sprite.y = Math.round(h / 2)
+			const texW = sprite.texture.width || 1
+			const texH = sprite.texture.height || 1
+			const scale = Math.max(w / texW, h / texH)
+			sprite.scale.set(scale)
+			content.addChild(sprite)
+			void prefetchBGM()
+			setTimeout(async () => {
+				await ensureAudioUnlocked()
+				await startBGMOnce()
+				root.emit('splashCompleted')
+			}, 600)
+		} catch (_) {
+			root.emit('splashCompleted')
+		}
 	}
-	// splash UI removed; show only video
+	// splash UI removed; show only media
 
 	return root
 }
