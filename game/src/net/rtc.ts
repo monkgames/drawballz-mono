@@ -800,23 +800,38 @@ export function createRTC(
 					)
 				}
 
-				// Force transceivers to sendrecv if we have local tracks
-				// This ensures the Answer SDP contains a=sendrecv
+				// Fix: Ensure local tracks are attached to the negotiated transceivers
 				if (localStream) {
-					pc.getTransceivers().forEach((t, i) => {
-						console.log(`RTC: Transceiver[${i}] before answer:`, {
-							mid: t.mid,
-							direction: t.direction,
-							currentDirection: t.currentDirection,
-							hasSenderTrack: !!t.sender.track,
-						})
-						if (t.sender.track && t.direction !== 'sendrecv') {
-							t.direction = 'sendrecv'
+					console.log(
+						'RTC: Checking for transceiver track mismatch...'
+					)
+					const transceivers = pc.getTransceivers()
+					for (const t of transceivers) {
+						// If this transceiver is negotiated (has mid) but has no sender track
+						if (t.mid && !t.sender.track && t.receiver.track) {
+							const kind = t.receiver.track.kind
+							const localTrack = localStream
+								.getTracks()
+								.find(tr => tr.kind === kind)
+							if (localTrack) {
+								console.log(
+									`RTC: Attaching local ${kind} track to negotiated transceiver ${t.mid}`
+								)
+								await t.sender.replaceTrack(localTrack)
+								t.direction = 'sendrecv'
+							}
+						} else if (
+							t.mid &&
+							t.sender.track &&
+							t.direction !== 'sendrecv'
+						) {
+							// Ensure direction is correct if track is present
 							console.log(
-								`RTC: Forced Transceiver[${i}] to sendrecv`
+								`RTC: Forcing sendrecv on transceiver ${t.mid}`
 							)
+							t.direction = 'sendrecv'
 						}
-					})
+					}
 				}
 
 				const ans = await pc.createAnswer()
