@@ -155,140 +155,156 @@ async function loadTrimmedCanvas(
 
 type AtlasTextures = Record<string, Texture>
 let ballsAtlas: AtlasTextures | null = null
+let ballsAtlasPromise: Promise<AtlasTextures> | null = null
 let packedAtlas: AtlasTextures | null = null
+let packedAtlasPromise: Promise<AtlasTextures | null> | null = null
 
-async function ensureBallsAtlas(): Promise<AtlasTextures> {
+export async function ensureBallsAtlas(): Promise<AtlasTextures> {
 	if (ballsAtlas) return ballsAtlas
-	const colors: BallColor[] = ['green', 'pink', 'orange', 'yellow', 'blue']
-	const padding = 4
-	const ballCanvases = await Promise.all(
-		colors.map(c => loadTrimmedCanvas(`/assets/sprites/balls/${c}`))
-	)
-	const trailCanvases = await Promise.all(
-		colors.map(c => loadTrimmedCanvas(`/assets/sprites/trails/${c}`))
-	)
-	const all = [...ballCanvases, ...trailCanvases].filter(
-		(c): c is HTMLCanvasElement => !!c
-	)
-	if (all.length === 0) {
-		ballsAtlas = {}
+	if (ballsAtlasPromise) return ballsAtlasPromise
+	ballsAtlasPromise = (async () => {
+		const colors: BallColor[] = [
+			'green',
+			'pink',
+			'orange',
+			'yellow',
+			'blue',
+		]
+		const padding = 4
+		const ballCanvases = await Promise.all(
+			colors.map(c => loadTrimmedCanvas(`/assets/sprites/balls/${c}`))
+		)
+		const trailCanvases = await Promise.all(
+			colors.map(c => loadTrimmedCanvas(`/assets/sprites/trails/${c}`))
+		)
+		const all = [...ballCanvases, ...trailCanvases].filter(
+			(c): c is HTMLCanvasElement => !!c
+		)
+		if (all.length === 0) {
+			ballsAtlas = {}
+			return ballsAtlas
+		}
+		const maxW = Math.max(...all.map(c => c.width))
+		const maxH = Math.max(...all.map(c => c.height))
+		const cols = 2
+		const rows = Math.max(ballCanvases.length, trailCanvases.length)
+		const atlasW = cols * (maxW + padding) + padding
+		const atlasH = rows * (maxH + padding) + padding
+		const atlasCanvas = document.createElement('canvas')
+		atlasCanvas.width = atlasW
+		atlasCanvas.height = atlasH
+		const ctx = atlasCanvas.getContext('2d') as CanvasRenderingContext2D
+		ctx.clearRect(0, 0, atlasW, atlasH)
+		const positions: {
+			key: string
+			x: number
+			y: number
+			w: number
+			h: number
+		}[] = []
+		for (let i = 0; i < rows; i++) {
+			const bx = padding
+			const by = padding + i * (maxH + padding)
+			const tx = padding + (maxW + padding)
+			const ty = by
+			const b = ballCanvases[i]
+			const t = trailCanvases[i]
+			if (b) {
+				ctx.drawImage(b, bx, by)
+				positions.push({
+					key: `ball/${colors[i]}`,
+					x: bx,
+					y: by,
+					w: b.width,
+					h: b.height,
+				})
+			}
+			if (t) {
+				ctx.drawImage(t, tx, ty)
+				positions.push({
+					key: `trail/${colors[i]}`,
+					x: tx,
+					y: ty,
+					w: t.width,
+					h: t.height,
+				})
+			}
+		}
+		const baseTex = Texture.from(atlasCanvas)
+		const atlas: AtlasTextures = {}
+		for (const p of positions) {
+			const frame = new Rectangle(p.x, p.y, p.w, p.h)
+			atlas[p.key] = new Texture({ source: baseTex.source, frame })
+		}
+		ballsAtlas = atlas
 		return ballsAtlas
-	}
-	const maxW = Math.max(...all.map(c => c.width))
-	const maxH = Math.max(...all.map(c => c.height))
-	const cols = 2
-	const rows = Math.max(ballCanvases.length, trailCanvases.length)
-	const atlasW = cols * (maxW + padding) + padding
-	const atlasH = rows * (maxH + padding) + padding
-	const atlasCanvas = document.createElement('canvas')
-	atlasCanvas.width = atlasW
-	atlasCanvas.height = atlasH
-	const ctx = atlasCanvas.getContext('2d') as CanvasRenderingContext2D
-	ctx.clearRect(0, 0, atlasW, atlasH)
-	const positions: {
-		key: string
-		x: number
-		y: number
-		w: number
-		h: number
-	}[] = []
-	for (let i = 0; i < rows; i++) {
-		const bx = padding
-		const by = padding + i * (maxH + padding)
-		const tx = padding + (maxW + padding)
-		const ty = by
-		const b = ballCanvases[i]
-		const t = trailCanvases[i]
-		if (b) {
-			ctx.drawImage(b, bx, by)
-			positions.push({
-				key: `ball/${colors[i]}`,
-				x: bx,
-				y: by,
-				w: b.width,
-				h: b.height,
-			})
-		}
-		if (t) {
-			ctx.drawImage(t, tx, ty)
-			positions.push({
-				key: `trail/${colors[i]}`,
-				x: tx,
-				y: ty,
-				w: t.width,
-				h: t.height,
-			})
-		}
-	}
-	const baseTex = Texture.from(atlasCanvas)
-	const atlas: AtlasTextures = {}
-	for (const p of positions) {
-		const frame = new Rectangle(p.x, p.y, p.w, p.h)
-		atlas[p.key] = new Texture({ source: baseTex.source, frame })
-	}
-	ballsAtlas = atlas
-	return ballsAtlas
+	})()
+	return ballsAtlasPromise
 }
 
 async function ensurePackedAtlas(): Promise<AtlasTextures | null> {
 	if (packedAtlas) return packedAtlas
-	const dpr = Math.min(window.devicePixelRatio || 1, 2)
-	const paths = [
-		dpr > 1
-			? '/assets/atlases/balls@2x.json'
-			: '/assets/atlases/balls.json',
-	]
-	for (const p of paths) {
-		try {
-			const sheet: any = await Assets.load(p)
-			const textures: Record<string, Texture> =
-				(sheet && sheet.textures) || {}
-			const colors: BallColor[] = [
-				'green',
-				'pink',
-				'orange',
-				'yellow',
-				'blue',
-			]
-			const atlas: AtlasTextures = {}
-			for (const c of colors) {
-				const ballKeys = [
-					`ball/${c}`,
-					`balls/${c}`,
-					`ball_${c}`,
-					`${c}_ball`,
-					`${c}`,
+	if (packedAtlasPromise) return packedAtlasPromise
+	packedAtlasPromise = (async () => {
+		const dpr = Math.min(window.devicePixelRatio || 1, 2)
+		const paths = [
+			dpr > 1
+				? '/assets/atlases/balls@2x.json'
+				: '/assets/atlases/balls.json',
+		]
+		for (const p of paths) {
+			try {
+				const sheet: any = await Assets.load(p)
+				const textures: Record<string, Texture> =
+					(sheet && sheet.textures) || {}
+				const colors: BallColor[] = [
+					'green',
+					'pink',
+					'orange',
+					'yellow',
+					'blue',
 				]
-				const trailKeys = [
-					`trail/${c}`,
-					`trails/${c}`,
-					`trail_${c}`,
-					`${c}_trail`,
-					`${c}_t`,
-				]
-				let b: Texture | undefined
-				for (const k of ballKeys) {
-					if (textures[k]) {
-						b = textures[k]
-						break
+				const atlas: AtlasTextures = {}
+				for (const c of colors) {
+					const ballKeys = [
+						`ball/${c}`,
+						`balls/${c}`,
+						`ball_${c}`,
+						`${c}_ball`,
+						`${c}`,
+					]
+					const trailKeys = [
+						`trail/${c}`,
+						`trails/${c}`,
+						`trail_${c}`,
+						`${c}_trail`,
+						`${c}_t`,
+					]
+					let b: Texture | undefined
+					for (const k of ballKeys) {
+						if (textures[k]) {
+							b = textures[k]
+							break
+						}
 					}
-				}
-				let t: Texture | undefined
-				for (const k of trailKeys) {
-					if (textures[k]) {
-						t = textures[k]
-						break
+					let t: Texture | undefined
+					for (const k of trailKeys) {
+						if (textures[k]) {
+							t = textures[k]
+							break
+						}
 					}
+					if (b) atlas[`ball/${c}`] = b
+					if (t) atlas[`trail/${c}`] = t
 				}
-				if (b) atlas[`ball/${c}`] = b
-				if (t) atlas[`trail/${c}`] = t
-			}
-			packedAtlas = atlas
-			return packedAtlas
-		} catch (_) {}
-	}
-	packedAtlas = null
-	return packedAtlas
+				packedAtlas = atlas
+				return packedAtlas
+			} catch (_) {}
+		}
+		packedAtlas = null
+		return packedAtlas
+	})()
+	return packedAtlasPromise
 }
 
 export async function createBall(color: BallColor, opts?: { noFX?: boolean }) {

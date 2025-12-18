@@ -1,7 +1,7 @@
 import { Container, Graphics, Text, Assets, Sprite, Texture } from 'pixi.js'
 import { createBall, BallColor } from '@/modules/ball'
 import { isMobileDevice, isSlowNetwork } from '@/util/env'
-import { stopBGM } from '@/audio/bgm'
+import { stopBGM, autoStartBGM } from '@/audio/bgm'
 import { playHoverSound, playClickSound } from '@/audio/sfx'
 import { gsap } from 'gsap'
 
@@ -51,10 +51,7 @@ const LOCK_POSITIONS = true
 let LOCKED_YELLOW_GAPS: number[] | null = null
 
 async function loadBackgroundTexture(): Promise<Texture | null> {
-	const useHiRes =
-		!isSlowNetwork() &&
-		!isMobileDevice() &&
-		(window.devicePixelRatio || 1) > 1
+	const useHiRes = !isSlowNetwork() && (window.devicePixelRatio || 1) > 1
 	const candidates: string[] = []
 	if (useHiRes) {
 		candidates.push(
@@ -83,10 +80,7 @@ async function loadBackgroundTexture(): Promise<Texture | null> {
 }
 
 async function loadBackgroundOverlayTexture(): Promise<Texture | null> {
-	const useHiRes =
-		!isSlowNetwork() &&
-		!isMobileDevice() &&
-		(window.devicePixelRatio || 1) > 1
+	const useHiRes = !isSlowNetwork() && (window.devicePixelRatio || 1) > 1
 	const atlasCandidates = useHiRes
 		? ['/assets/atlases/ui@2x.json', '/assets/atlases/bg@2x.json']
 		: ['/assets/atlases/ui.json', '/assets/atlases/bg.json']
@@ -154,7 +148,7 @@ async function loadBackgroundVideoSprite(): Promise<Sprite | null> {
 }
 
 async function loadLogoTexture(): Promise<Texture | null> {
-	const dpr = Math.min(window.devicePixelRatio || 1, 2)
+	const dpr = window.devicePixelRatio || 1
 	const atlasCandidates =
 		dpr > 1
 			? ['/assets/atlases/ui@2x.json', '/assets/atlases/balls@2x.json']
@@ -186,43 +180,43 @@ async function loadLogoTexture(): Promise<Texture | null> {
 }
 
 export async function createHomeScene(w: number, h: number) {
-    const root = new Container()
-    const content = new Container()
-    content.sortableChildren = true
-    root.addChild(content)
-    const bgGroup = new Container()
-    bgGroup.eventMode = 'none'
-    content.addChildAt(bgGroup, 0)
-    let bgLayer: Sprite | Graphics | null = null
-    let bgIsVideo = false
+	const root = new Container()
+	const content = new Container()
+	content.sortableChildren = true
+	root.addChild(content)
+	const bgGroup = new Container()
+	bgGroup.eventMode = 'none'
+	content.addChildAt(bgGroup, 0)
+	let bgLayer: Sprite | Graphics | null = null
+	let bgIsVideo = false
 
-    // Add immediate solid background to avoid any blank stage
-    const bgSolid = makeBackground(DESIGN_W, DESIGN_H)
-    bgGroup.addChild(bgSolid)
-    bgLayer = bgSolid
+	// Add immediate solid background to avoid any blank stage
+	const bgSolid = makeBackground(DESIGN_W, DESIGN_H)
+	bgGroup.addChild(bgSolid)
+	bgLayer = bgSolid
 	const baseTexPromise = loadBackgroundTexture()
 	const bgVideoPromise = loadBackgroundVideoSprite()
 	void (async () => {
 		const bgTex = await baseTexPromise
-        if (bgTex && !bgIsVideo) {
-            const sprite = new Sprite({ texture: bgTex })
-            sprite.anchor = 0.5
-            sprite.x = DESIGN_W / 2
-            sprite.y = DESIGN_H / 2
-            const scale = Math.max(
-                DESIGN_W / bgTex.width,
-                DESIGN_H / bgTex.height
-            )
-            sprite.scale.set(scale)
-            bgGroup.addChildAt(sprite, 0)
-            if (bgLayer) {
-                try {
-                    bgGroup.removeChild(bgLayer)
-                } catch (_) {}
-            }
-            bgLayer = sprite
-            if (!isMobileDevice()) {
-                gsap.to(sprite, {
+		if (bgTex && !bgIsVideo) {
+			const sprite = new Sprite({ texture: bgTex })
+			sprite.anchor = 0.5
+			sprite.x = DESIGN_W / 2
+			sprite.y = DESIGN_H / 2
+			const scale = Math.max(
+				DESIGN_W / bgTex.width,
+				DESIGN_H / bgTex.height
+			)
+			sprite.scale.set(scale)
+			bgGroup.addChildAt(sprite, 0)
+			if (bgLayer) {
+				try {
+					bgGroup.removeChild(bgLayer)
+				} catch (_) {}
+			}
+			bgLayer = sprite
+			if (!isMobileDevice()) {
+				gsap.to(sprite, {
 					rotation: 0.01,
 					yoyo: true,
 					repeat: -1,
@@ -242,25 +236,25 @@ export async function createHomeScene(w: number, h: number) {
 	})()
 	void (async () => {
 		const bgVideo = await bgVideoPromise
-        if (bgVideo) {
-            bgIsVideo = true
-            const sprite = bgVideo
-            sprite.anchor = 0.5
-            sprite.x = DESIGN_W / 2
-            sprite.y = DESIGN_H / 2
-            const texW = sprite.texture.width || 1
-            const texH = sprite.texture.height || 1
-            const scale = Math.max(DESIGN_W / texW, DESIGN_H / texH)
-            sprite.scale.set(scale)
-            bgGroup.addChildAt(sprite, 0)
-            if (bgLayer) {
-                try {
-                    bgGroup.removeChild(bgLayer)
-                } catch (_) {}
-            }
-            bgLayer = sprite
-            if (!isMobileDevice()) {
-                gsap.to(sprite, {
+		if (bgVideo) {
+			bgIsVideo = true
+			const sprite = bgVideo
+			sprite.anchor = 0.5
+			sprite.x = DESIGN_W / 2
+			sprite.y = DESIGN_H / 2
+			const texW = sprite.texture.width || 1
+			const texH = sprite.texture.height || 1
+			const scale = Math.max(DESIGN_W / texW, DESIGN_H / texH)
+			sprite.scale.set(scale)
+			bgGroup.addChildAt(sprite, 0)
+			if (bgLayer) {
+				try {
+					bgGroup.removeChild(bgLayer)
+				} catch (_) {}
+			}
+			bgLayer = sprite
+			if (!isMobileDevice()) {
+				gsap.to(sprite, {
 					rotation: 0.01,
 					yoyo: true,
 					repeat: -1,
@@ -276,39 +270,39 @@ export async function createHomeScene(w: number, h: number) {
 					ease: 'sine.inOut',
 				})
 			}
-            const overlayTex = await loadBackgroundOverlayTexture()
-            if (overlayTex) {
-                const overlay = new Sprite({ texture: overlayTex })
-                overlay.anchor = 0.5
-                overlay.x = DESIGN_W / 2
-                overlay.y = DESIGN_H / 2
-                const s = Math.max(
-                    DESIGN_W / overlayTex.width,
-                    DESIGN_H / overlayTex.height
-                )
-                overlay.scale.set(s)
-                bgGroup.addChild(overlay)
-                if (!isMobileDevice()) {
-                    gsap.to(overlay, {
-                        y: overlay.y + 8,
-                        rotation: 0.01,
-                        yoyo: true,
-                        repeat: -1,
-                        duration: 6,
-                        ease: 'sine.inOut',
-                    })
-                    gsap.to(overlay.scale, {
-                        x: s * 1.01,
-                        y: s * 1.01,
-                        yoyo: true,
-                        repeat: -1,
-                        duration: 10,
-                        ease: 'sine.inOut',
-                    })
-                }
-            }
-        }
-    })()
+			const overlayTex = await loadBackgroundOverlayTexture()
+			if (overlayTex) {
+				const overlay = new Sprite({ texture: overlayTex })
+				overlay.anchor = 0.5
+				overlay.x = DESIGN_W / 2
+				overlay.y = DESIGN_H / 2
+				const s = Math.max(
+					DESIGN_W / overlayTex.width,
+					DESIGN_H / overlayTex.height
+				)
+				overlay.scale.set(s)
+				bgGroup.addChild(overlay)
+				if (!isMobileDevice()) {
+					gsap.to(overlay, {
+						y: overlay.y + 8,
+						rotation: 0.01,
+						yoyo: true,
+						repeat: -1,
+						duration: 6,
+						ease: 'sine.inOut',
+					})
+					gsap.to(overlay.scale, {
+						x: s * 1.01,
+						y: s * 1.01,
+						yoyo: true,
+						repeat: -1,
+						duration: 10,
+						ease: 'sine.inOut',
+					})
+				}
+			}
+		}
+	})()
 
 	const bgFX = new Container()
 	content.addChild(bgFX)
@@ -448,7 +442,7 @@ export async function createHomeScene(w: number, h: number) {
 		title.x = Math.round(DESIGN_W / 2)
 		title.y = headerCenterY
 		title.roundPixels = true
-		title.resolution = Math.min(window.devicePixelRatio || 1, 2)
+		title.resolution = Math.max(window.devicePixelRatio || 1, 2)
 		content.addChild(title)
 		gsap.to(title.scale, {
 			x: 1.03,
@@ -467,28 +461,36 @@ export async function createHomeScene(w: number, h: number) {
 		})
 	}
 
-	const readyText = new Text({
-		text: 'Not Ready',
-		style: { fontFamily: 'system-ui', fontSize: 18, fill: 0xffffff },
-	})
-	readyText.anchor = 0.5
-	readyText.x = Math.round(DESIGN_W - 160)
-	readyText.y = headerCenterY
-	readyText.roundPixels = true
-	readyText.resolution = Math.min(window.devicePixelRatio || 1, 2)
-	content.addChild(readyText)
 	const bgmBtnBox = new Graphics()
-	const BGM_W = 120
-	const BGM_H = 40
-	bgmBtnBox.roundRect(0, 0, BGM_W, BGM_H, 10)
+	const BGM_W = 100
+	const BGM_H = 32
+	bgmBtnBox.roundRect(0, 0, BGM_W, BGM_H, 8)
 	const bgmMutedInit =
 		(localStorage.getItem('bgmMuted') || '') === '1' ? true : false
-	bgmBtnBox.fill({ color: bgmMutedInit ? 0xff4d4f : 0x98ffb3, alpha: 1.0 })
-	bgmBtnBox.x = Math.round(DESIGN_W - 160 - BGM_W - 20)
-	bgmBtnBox.y = Math.round(headerCenterY - BGM_H / 2)
+	bgmBtnBox.fill({
+		color: bgmMutedInit ? 0xff4d4f : 0x98ffb3,
+		alpha: 1.0,
+	})
+	bgmBtnBox.stroke({ color: 0xffffff, width: 2, alpha: 0.5 })
 	bgmBtnBox.eventMode = 'static'
 	bgmBtnBox.cursor = 'pointer'
 	content.addChild(bgmBtnBox)
+
+	// Position BGM button at top-left (vacated by prize multipliers)
+	bgmBtnBox.x = 24
+	bgmBtnBox.y = 24
+
+	const readyText = new Text({
+		text: 'Not Ready',
+		style: { fontFamily: 'system-ui', fontSize: 18, fill: 0xff4d4f },
+	})
+	readyText.anchor.set(0, 0.5) // Left align
+	readyText.x = bgmBtnBox.x
+	readyText.y = Math.round(bgmBtnBox.y + BGM_H + 24)
+	readyText.roundPixels = true
+	readyText.resolution = Math.max(window.devicePixelRatio || 1, 2)
+	content.addChild(readyText)
+
 	const bgmBtnLabel = new Text({
 		text: bgmMutedInit ? 'BGM OFF' : 'BGM ON',
 		style: { fontFamily: 'system-ui', fontSize: 16, fill: 0x000000 },
@@ -497,25 +499,30 @@ export async function createHomeScene(w: number, h: number) {
 	bgmBtnLabel.x = Math.round(bgmBtnBox.x + BGM_W / 2)
 	bgmBtnLabel.y = Math.round(bgmBtnBox.y + BGM_H / 2)
 	bgmBtnLabel.roundPixels = true
-	bgmBtnLabel.resolution = Math.min(window.devicePixelRatio || 1, 2)
+	bgmBtnLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	content.addChild(bgmBtnLabel)
 	bgmBtnBox.on('pointertap', async () => {
 		try {
-			const mutedNow = (localStorage.getItem('bgmMuted') || '') === '1'
+			const {
+				isMuted,
+				setMuted,
+				ensureAudioUnlocked,
+				startBGMOnce,
+				stopBGMElement,
+				stopBGM,
+			} = await import('@/audio/bgm')
+			const mutedNow = isMuted()
 			if (mutedNow) {
-				localStorage.setItem('bgmMuted', '0')
+				setMuted(false)
 				bgmBtnBox.fill({ color: 0x98ffb3, alpha: 1.0 })
 				bgmBtnLabel.text = 'BGM ON'
-				const { ensureAudioUnlocked, startBGMOnce, stopBGMElement } =
-					await import('@/audio/bgm')
 				await ensureAudioUnlocked()
 				await startBGMOnce()
 				stopBGMElement()
 			} else {
-				localStorage.setItem('bgmMuted', '1')
+				setMuted(true)
 				bgmBtnBox.fill({ color: 0xff4d4f, alpha: 1.0 })
 				bgmBtnLabel.text = 'BGM OFF'
-				const { stopBGM, stopBGMElement } = await import('@/audio/bgm')
 				stopBGM()
 				stopBGMElement()
 			}
@@ -558,7 +565,7 @@ export async function createHomeScene(w: number, h: number) {
 	matchBtnLabel.x = matchBtnBox.x
 	matchBtnLabel.y = matchBtnBox.y
 	matchBtnLabel.roundPixels = true
-	matchBtnLabel.resolution = Math.min(window.devicePixelRatio || 1, 2)
+	matchBtnLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	content.addChild(matchBtnLabel)
 
 	const cancelBtnBox = new Graphics()
@@ -586,7 +593,7 @@ export async function createHomeScene(w: number, h: number) {
 	cancelBtnLabel.x = cancelBtnBox.x
 	cancelBtnLabel.y = cancelBtnBox.y
 	cancelBtnLabel.roundPixels = true
-	cancelBtnLabel.resolution = Math.min(window.devicePixelRatio || 1, 2)
+	cancelBtnLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	cancelBtnLabel.visible = false
 	content.addChild(cancelBtnLabel)
 	const setBtnEnabled = (enabled: boolean) => {
@@ -618,6 +625,7 @@ export async function createHomeScene(w: number, h: number) {
 	})
 	root.on('readyStatus', (ready: boolean) => {
 		readyText.text = ready ? 'Ready' : 'Not Ready'
+		readyText.style.fill = ready ? 0x98ffb3 : 0xff4d4f
 		setBtnEnabled(ready)
 	})
 	// default to not ready until we detect configured state
@@ -628,9 +636,9 @@ export async function createHomeScene(w: number, h: number) {
 	})
 	matchStatus.anchor = 0.5
 	matchStatus.x = Math.round(DESIGN_W - 160)
-	matchStatus.y = Math.round(headerCenterY + 28)
+	matchStatus.y = Math.round(headerCenterY + 40)
 	matchStatus.roundPixels = true
-	matchStatus.resolution = Math.min(window.devicePixelRatio || 1, 2)
+	matchStatus.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	content.addChild(matchStatus)
 	root.on('matchStatus', (msg: string) => {
 		matchStatus.text = msg || ''
@@ -708,7 +716,7 @@ export async function createHomeScene(w: number, h: number) {
 		readyCountText.text = `Ready players: ${Math.max(0, Math.floor(n))}`
 	})
 	// Opponent badge is shown in battle scene; no badge on home
-	// Bet amount overlay (HTML) to capture user input
+	// Bet amount overlay (HTML) - Round Collapsible UI
 	{
 		const existing = document.getElementById(
 			'betOverlay'
@@ -723,66 +731,133 @@ export async function createHomeScene(w: number, h: number) {
 		overlay.style.position = 'fixed'
 		overlay.style.left = '24px'
 		overlay.style.bottom = '24px'
-		overlay.style.display = 'flex'
-		overlay.style.alignItems = 'center'
-		overlay.style.gap = '8px'
-		overlay.style.padding = '8px 10px'
-		overlay.style.background = 'rgba(10,15,18,0.9)'
-		overlay.style.border = '1px solid #375a44'
-		overlay.style.borderRadius = '14px'
 		overlay.style.zIndex = '9999'
-		overlay.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)'
+		overlay.style.display = 'flex'
+		overlay.style.flexDirection = 'column'
+		overlay.style.alignItems = 'flex-start'
+		overlay.style.gap = '8px'
+
+		// Toggle Button (Round Chip)
+		const toggleBtn = document.createElement('div')
+		toggleBtn.style.width = '56px'
+		toggleBtn.style.height = '56px'
+		toggleBtn.style.borderRadius = '50%'
+		toggleBtn.style.background =
+			'linear-gradient(135deg, #1a2228 0%, #0a0f12 100%)'
+		toggleBtn.style.border = '2px solid #98ffb3'
+		toggleBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)'
+		toggleBtn.style.cursor = 'pointer'
+		toggleBtn.style.display = 'flex'
+		toggleBtn.style.alignItems = 'center'
+		toggleBtn.style.justifyContent = 'center'
+		toggleBtn.style.color = '#98ffb3'
+		toggleBtn.style.fontSize = '24px'
+		toggleBtn.style.transition = 'transform 0.2s, box-shadow 0.2s'
+		toggleBtn.innerHTML = '<span>$</span>' // Dollar sign icon
+		toggleBtn.title = 'Change Bet'
+
+		toggleBtn.addEventListener('mouseenter', () => {
+			toggleBtn.style.transform = 'scale(1.05)'
+			toggleBtn.style.boxShadow = '0 6px 16px rgba(152, 255, 179, 0.3)'
+		})
+		toggleBtn.addEventListener('mouseleave', () => {
+			toggleBtn.style.transform = 'scale(1)'
+			toggleBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)'
+		})
+
+		// Collapsible Panel
+		const panel = document.createElement('div')
+		panel.style.display = 'none' // Hidden by default
+		panel.style.alignItems = 'center'
+		panel.style.gap = '8px'
+		panel.style.padding = '12px 16px'
+		panel.style.background = 'rgba(10,15,18,0.95)'
+		panel.style.border = '1px solid #375a44'
+		panel.style.borderRadius = '24px' // Rounded pill shape
+		panel.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)'
+		panel.style.marginBottom = '8px' // Space above toggle button
+
 		const label = document.createElement('span')
 		label.textContent = 'Bet'
 		label.style.color = '#e6f7ff'
 		label.style.fontWeight = '600'
+
 		const input = document.createElement('input')
 		input.type = 'number'
 		input.min = '1'
 		input.step = '1'
 		input.placeholder = 'Amount'
-		input.style.width = '110px'
-		input.style.padding = '8px 10px'
+		input.style.width = '100px'
+		input.style.padding = '8px 12px'
 		input.style.color = '#e6f7ff'
 		input.style.background = '#0a0f12'
 		input.style.border = '1px solid #334155'
-		input.style.borderRadius = '10px'
+		input.style.borderRadius = '12px'
 		input.style.outline = 'none'
+
 		const setBtn = document.createElement('button')
 		setBtn.textContent = 'Set'
-		setBtn.style.padding = '8px 14px'
+		setBtn.style.padding = '8px 16px'
 		setBtn.style.background = '#98ffb3'
 		setBtn.style.color = '#000'
 		setBtn.style.border = 'none'
-		setBtn.style.borderRadius = '10px'
+		setBtn.style.borderRadius = '12px'
 		setBtn.style.cursor = 'pointer'
+		setBtn.style.fontWeight = 'bold'
+
 		const saved = Math.max(
 			1,
 			Math.floor(Number(localStorage.getItem('betAmount') || 0))
 		)
 		if (saved > 0) input.value = String(saved)
+
 		const applyBetStyle = () => {
 			const v = Math.max(1, Math.floor(Number(input.value) || 0))
 			const ok = v > 0
 			const borderColor = ok ? '#3bd38c' : '#ff4d4f'
 			input.style.border = `1px solid ${borderColor}`
-			overlay.style.border = `1px solid ${borderColor}`
 		}
+
 		const submit = () => {
 			const v = Math.max(1, Math.floor(Number(input.value) || 0))
 			localStorage.setItem('betAmount', String(v))
 			root.emit('betUpdated', v)
 			applyBetStyle()
+			// Auto-collapse after setting
+			panel.style.display = 'none'
+			// Update toggle button text temporarily or show feedback?
+			// For now just collapse
 		}
+
 		setBtn.addEventListener('click', submit)
 		input.addEventListener('keydown', e => {
 			if ((e as KeyboardEvent).key === 'Enter') submit()
 		})
 		input.addEventListener('input', applyBetStyle)
-		overlay.appendChild(label)
-		overlay.appendChild(input)
-		overlay.appendChild(setBtn)
+
+		panel.appendChild(label)
+		panel.appendChild(input)
+		panel.appendChild(setBtn)
+
+		// Structure: Overlay -> [Panel, ToggleBtn]
+		// Since flex-direction is column-reverse (we want panel above button),
+		// or we can use column and put panel first?
+		// User said "round collapsible ui". Usually expands outwards.
+		// Let's keep it simple: Button at bottom, panel appears above it.
+		overlay.style.flexDirection = 'column-reverse'
+
+		overlay.appendChild(toggleBtn)
+		overlay.appendChild(panel)
 		document.body.appendChild(overlay)
+
+		toggleBtn.addEventListener('click', () => {
+			const isVisible = panel.style.display === 'flex'
+			panel.style.display = isVisible ? 'none' : 'flex'
+			if (!isVisible) {
+				setTimeout(() => input.focus(), 50)
+			}
+		})
+
 		applyBetStyle()
 		root.on('destroyed', () => {
 			try {
@@ -791,54 +866,9 @@ export async function createHomeScene(w: number, h: number) {
 			} catch (_) {}
 		})
 	}
-	// Prize multipliers panel
-	{
-		const panel = new Graphics()
-		const pW = 220
-		const pH = 150
-		panel.roundRect(0, 0, pW, pH, 12)
-		panel.fill({ color: 0x0a0f12, alpha: 0.9 })
-		panel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.7 })
-		panel.x = Math.round(20)
-		panel.y = Math.round(20)
-		const title = new Text({
-			text: 'Prize Multipliers',
-			style: { fontFamily: 'system-ui', fontSize: 16, fill: 0xe6f7ff },
-		})
-		title.x = panel.x + 12
-		title.y = panel.y + 10
-		const list = new Text({
-			text: '',
-			style: { fontFamily: 'system-ui', fontSize: 14, fill: 0x98ffb3 },
-		})
-		list.x = panel.x + 12
-		list.y = panel.y + 36
-		content.addChild(panel)
-		content.addChild(title)
-		content.addChild(list)
-		;(async () => {
-			const tryLoad = async (attempt = 1): Promise<void> => {
-				try {
-					const res = await fetch('/prize')
-					if (!res.ok) throw new Error(`status ${res.status}`)
-					const data = await res.json()
-					const t = (data?.table || {}) as Record<number, number>
-					const lines = [1, 2, 3, 4, 5]
-						.map(k => `${k} matches → x${Number(t[k] || 0)}`)
-						.join('\n')
-					list.text = lines
-				} catch (_) {
-					if (attempt < 3) {
-						list.text = 'Loading…'
-						setTimeout(() => void tryLoad(attempt + 1), 1200)
-					} else {
-						list.text = 'Failed to load'
-					}
-				}
-			}
-			void tryLoad()
-		})()
-	}
+	// Prize multipliers panel purged
+	// n/5 Configured text purged
+	const countTextRef: Text | null = null
 	const proposalUI = new Container()
 	proposalUI.zIndex = 1000
 
@@ -918,61 +948,7 @@ export async function createHomeScene(w: number, h: number) {
 	})
 	// verification removed; match is handled via websocket
 
-	const next = new Text({
-		text: 'NEXT LIVEBET',
-		style: { fontFamily: 'system-ui', fontSize: 22, fill: 0x98ffb3 },
-	})
-	next.anchor = 0.5
-	next.x = Math.round(DESIGN_W / 2)
-	next.y = nextY
-	next.roundPixels = true
-	next.resolution = Math.min(window.devicePixelRatio || 1, 2)
-	content.addChild(next)
-	const nextLoader = new Graphics()
-	const loaderR = 14
-	nextLoader.x = Math.round(next.x - next.width / 2 - loaderR - 16)
-	nextLoader.y = next.y
-	content.addChild(nextLoader)
-	const renderLoader = (p: number) => {
-		nextLoader.clear()
-		nextLoader.circle(0, 0, loaderR)
-		nextLoader.stroke({ color: 0x98ffb3, width: 2, alpha: 0.18 })
-		nextLoader.arc(
-			0,
-			0,
-			loaderR,
-			-Math.PI / 2,
-			-Math.PI / 2 + p * Math.PI * 2
-		)
-		nextLoader.stroke({ color: 0x98ffb3, width: 3, alpha: 0.9 })
-	}
-	const loaderState = { p: 0 }
-	renderLoader(0)
-	gsap.to(loaderState, {
-		p: 1,
-		duration: 2.2,
-		ease: 'none',
-		repeat: -1,
-		onUpdate: () => renderLoader(loaderState.p),
-	})
-
-	const countdownLabel = new Graphics()
-	countdownLabel.roundRect(0.5, 0.5, 210, 48, 12)
-	countdownLabel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.7 })
-	countdownLabel.x = Math.round(DESIGN_W / 2 - 105)
-	countdownLabel.y = Math.round(next.y + 30)
-	content.addChild(countdownLabel)
-
-	const countdown = new Text({
-		text: 'Countdown 180',
-		style: { fontFamily: 'system-ui', fontSize: 22, fill: 0xffffff },
-	})
-	countdown.anchor = 0.5
-	countdown.x = Math.round(DESIGN_W / 2)
-	countdown.y = Math.round(countdownLabel.y + 24)
-	countdown.roundPixels = true
-	countdown.resolution = Math.min(window.devicePixelRatio || 1, 2)
-	content.addChild(countdown)
+	// Next Livebet & Countdown purged
 
 	const colorsInit: readonly BallColor[] = [
 		'green',
@@ -1289,175 +1265,12 @@ export async function createHomeScene(w: number, h: number) {
 			try {
 				console.log('Home/refreshConfigured', { count, configured })
 			} catch (_) {}
-			if (countTextRef) {
-				countTextRef.text = `${count}/5 Configured`
-			}
-			for (const key of Object.keys(configNodes)) {
-				const idx = Number(key)
-				const n = configNodes[idx]
-				const curColor = String(colors[idx])
-				const val = Number(configured[curColor]) || 0
-				const container = balls[idx]
-				const ballSprite = (container as any).userData?.ball as
-					| Sprite
-					| undefined
-				const hasBall = !!ballSprite
-				const isConfigured = hasBall && val > 0
-				// recompute ring radius and redraw to ensure instant visual update
-				const s = scales[idx]
-				const r =
-					(ballSprite
-						? (ballSprite.texture.width || ballSprite.width) *
-						  s *
-						  0.55
-						: (ballWidths[idx] / 2) * 0.55) || 30
-				n.ring.clear()
-				n.ring.circle(0, 0, Math.round(r))
-				n.ring.x = Math.round(container.x)
-				n.ring.y = Math.round(container.y)
-				n.ring.stroke({
-					color: isConfigured ? 0x00c853 : 0xff4d4f,
-					width: 4,
-					alpha: 0.9,
-				})
-				n.label.text = isConfigured ? String(val) : '-'
-				n.label.style.fill = isConfigured ? 0x98ffb3 : 0xffb3b3
-				try {
-					console.log('Home/ringUpdate', {
-						index: idx,
-						color: curColor,
-						hasBall,
-						number: val,
-						isConfigured,
-						ringPos: { x: n.ring.x, y: n.ring.y },
-					})
-				} catch (_) {}
-			}
+			// n/5 Configured update purged
+			// for (const key of Object.keys(configNodes)) ... removed
 		}
-		const countText = new Text({
-			text: '0/5 Configured',
-			style: { fontFamily: 'system-ui', fontSize: 16, fill: 0xe6f7ff },
-		})
-		countText.anchor = 0.5
-		countText.x = Math.round(120)
-		countText.y = headerCenterY
-		countText.roundPixels = true
-		countText.resolution = Math.min(window.devicePixelRatio || 1, 2)
-		content.addChild(countText)
-		countTextRef = countText
-		for (let i = 0; i < balls.length; i++) {
-			const container = balls[i]
-			const color = colors[i]
-			const ballSprite = (container as any).userData?.ball as
-				| Sprite
-				| undefined
-			const s = scales[i]
-			const r =
-				(ballSprite
-					? (ballSprite.texture.width || ballSprite.width) * s * 0.55
-					: (ballWidths[i] / 2) * 0.55) || 30
-			const ring = new Graphics()
-			ring.circle(0, 0, Math.round(r))
-			ring.x = Math.round(container.x)
-			ring.y = Math.round(container.y)
-			content.addChild(ring)
-			const label = new Text({
-				text: '-',
-				style: {
-					fontFamily: 'system-ui',
-					fontSize: 18,
-					fill: 0xffb3b3,
-				},
-			})
-			label.anchor = 0.5
-			label.x = Math.round(container.x)
-			label.y = Math.round(container.y - r - 18)
-			label.roundPixels = true
-			label.resolution = Math.min(window.devicePixelRatio || 1, 2)
-			content.addChild(label)
-			// small delete button (×) above the ball
-			const del = new Text({
-				text: '×',
-				style: {
-					fontFamily: 'system-ui',
-					fontSize: 18,
-					fill: 0xffb3b3,
-				},
-			})
-			del.anchor = 0.5
-			del.x = Math.round(container.x)
-			del.y = Math.round(container.y - r - 40)
-			del.roundPixels = true
-			del.resolution = Math.min(window.devicePixelRatio || 1, 2)
-			del.eventMode = 'static'
-			del.cursor = 'pointer'
-			del.on('pointertap', () => {
-				try {
-					const existingBall = (container as any).userData?.ball as
-						| Sprite
-						| undefined
-					if (existingBall) {
-						try {
-							container.removeChild(existingBall)
-						} catch (_) {}
-					}
-					// ensure an empty bubble is shown; keep trail intact
-					const s0 = scales[i]
-					let bubble = (container as any).userData?.bubble as
-						| Graphics
-						| undefined
-					if (!bubble) {
-						const b = new Graphics()
-						b.circle(0, 0, Math.round((ballWidths[i] / 2) * 0.55))
-						b.fill({ color: 0x0a0f12, alpha: 0.35 })
-						b.stroke({ color: 0x334155, width: 2, alpha: 0.9 })
-						b.eventMode = 'static'
-						b.cursor = 'pointer'
-						b.scale.set(s0)
-						container.addChild(b)
-						bubble = b
-						b.on('pointertap', (ev: any) => {
-							try {
-								console.log('Home/bubble tapped', {
-									index: i,
-									color: colors[i],
-								})
-								ev?.stopPropagation?.()
-							} catch (_) {}
-							root.emit(
-								'configureBall',
-								colors[i],
-								i,
-								colors.slice()
-							)
-						})
-					}
-					;(container as any).userData = {
-						...(container as any).userData,
-						ball: undefined,
-						bubble,
-					}
-					// clear configured number for this color
-					const key = 'configuredMap'
-					let map: Record<string, number> = {}
-					try {
-						map =
-							JSON.parse(localStorage.getItem(key) || '{}') || {}
-					} catch (_) {}
-					const curColor = String(colors[i])
-					if (curColor in map) {
-						try {
-							delete map[curColor]
-						} catch (_) {}
-						localStorage.setItem(key, JSON.stringify(map))
-					}
-					// immediate UI refresh to force ring redraw
-					root.emit('refreshConfigured')
-				} catch (_) {}
-			})
-			content.addChild(del)
-			configNodes[i] = { ring, label, del }
-		}
+		// n/5 Configured creation purged
+		// for (let i = 0; i < balls.length; i++) ... removed
+
 		applyConfigured()
 		root.on('refreshConfigured', () => applyConfigured())
 	}
@@ -1466,29 +1279,10 @@ export async function createHomeScene(w: number, h: number) {
 	root.on('updateBallSprite', async (idx: number, newColor: string) => {
 		try {
 			const i = Math.max(0, Math.min(balls.length - 1, Math.floor(idx)))
-			// disallow duplicates
-			if (
-				colors.some((c, j) => {
-					if (j === i) return false
-					const other = balls[j]
-					const hasBallOther = !!((other as any).userData?.ball as
-						| Sprite
-						| undefined)
-					return hasBallOther && c === (newColor as any)
-				})
-			) {
-				try {
-					console.log('Home/updateBallSprite blocked (duplicate)', {
-						index: i,
-						newColor,
-						colors,
-					})
-				} catch (_) {}
-				return
-			}
 			const container = balls[i]
 			const s = scales[i]
-			// remove existing ball/trail children
+
+			// Remove existing
 			const existingBall = (container as any).userData?.ball as
 				| Sprite
 				| undefined
@@ -1498,15 +1292,6 @@ export async function createHomeScene(w: number, h: number) {
 			const existingBubble = (container as any).userData?.bubble as
 				| Graphics
 				| undefined
-			try {
-				console.log('Home/updateBallSprite start', {
-					index: i,
-					newColor,
-					hasBall: !!existingBall,
-					hasTrail: !!existingTrail,
-					hasBubble: !!existingBubble,
-				})
-			} catch (_) {}
 			if (existingBall) {
 				try {
 					container.removeChild(existingBall)
@@ -1523,7 +1308,75 @@ export async function createHomeScene(w: number, h: number) {
 					;(existingBubble as any)?.destroy?.()
 				} catch (_) {}
 			}
-			// create new ball with FX
+
+			// Check configuration
+			let map: Record<string, number> = {}
+			try {
+				map =
+					JSON.parse(localStorage.getItem('configuredMap') || '{}') ||
+					{}
+			} catch (_) {}
+			const val = Number(map[newColor]) || 0
+			const isConfigured = val > 0
+
+			if (!isConfigured) {
+				// Create Bubble
+				const b = new Graphics()
+				const radius = Math.round((ballWidths[i] / 2) * 0.55)
+				b.circle(0, 0, radius)
+				b.fill({ color: 0x0a0f12, alpha: 0.35 })
+				b.stroke({ color: 0x334155, width: 2, alpha: 0.9 })
+				b.eventMode = 'static'
+				b.cursor = 'pointer'
+				b.scale.set(s)
+
+				const plus = new Text({
+					text: '+',
+					style: {
+						fontFamily: 'system-ui',
+						fontSize: Math.round(radius * 1.2),
+						fill: 0x334155,
+						fontWeight: 'bold',
+						align: 'center',
+					},
+				})
+				plus.anchor.set(0.5)
+				plus.y = -2
+				b.addChild(plus)
+
+				b.on('pointerover', () => {
+					b.stroke({ color: 0x98ffb3, width: 2, alpha: 1 })
+					plus.style.fill = 0x98ffb3
+					gsap.to(b.scale, {
+						x: s * 1.1,
+						y: s * 1.1,
+						duration: 0.3,
+						ease: 'back.out(1.7)',
+					})
+				})
+				b.on('pointerout', () => {
+					b.stroke({ color: 0x334155, width: 2, alpha: 0.9 })
+					plus.style.fill = 0x334155
+					gsap.to(b.scale, {
+						x: s,
+						y: s,
+						duration: 0.3,
+						ease: 'power2.out',
+					})
+				})
+				b.on('pointertap', () => {
+					root.emit('configureBall', newColor, i, colors.slice())
+				})
+				container.addChild(b)
+				;(container as any).userData = {
+					...(container as any).userData,
+					ball: undefined,
+					bubble: b,
+				}
+				return
+			}
+
+			// Create Ball
 			const fresh = await createBall(newColor as any)
 			const freshBall = (fresh as any).userData?.ball as
 				| Sprite
@@ -1543,6 +1396,16 @@ export async function createHomeScene(w: number, h: number) {
 			}
 			if (trailSpriteNew) {
 				trailSpriteNew.eventMode = 'none'
+				container.addChild(trailSpriteNew)
+				if (!LOCK_POSITIONS) {
+					gsap.to(trailSpriteNew, {
+						alpha: 0.8,
+						yoyo: true,
+						repeat: -1,
+						duration: 1.6 + i * 0.1,
+						ease: 'sine.inOut',
+					})
+				}
 			}
 			if (ballSpriteNew) {
 				ballSpriteNew.eventMode = 'static'
@@ -1568,89 +1431,104 @@ export async function createHomeScene(w: number, h: number) {
 				ballSpriteNew.on('pointertap', () => {
 					root.emit('configureBall', newColor, i, colors.slice())
 				})
+				container.addChild(ballSpriteNew)
+
+				// Restore Configured Indicator (Ring)
+				const ring = new Graphics()
+				const r =
+					Math.max(ballSpriteNew.width, ballSpriteNew.height) * 0.65
+				ring.arc(0, 0, r, 0, Math.PI * 2)
+				ring.stroke({ color: 0x98ffb3, width: 3, alpha: 0.8 })
+				// Dashed effect simulated by mask or multiple arcs?
+				// Simple glow ring is fine for now, user asked for "circle indicator"
+				ring.eventMode = 'none'
+				container.addChild(ring)
+
+				// Animate ring
+				gsap.to(ring.scale, {
+					x: 1.1,
+					y: 1.1,
+					duration: 1.5,
+					yoyo: true,
+					repeat: -1,
+					ease: 'sine.inOut',
+				})
+				gsap.to(ring, {
+					alpha: 0.4,
+					duration: 1.5,
+					yoyo: true,
+					repeat: -1,
+					ease: 'sine.inOut',
+				})
+
+				// Restore Remove Button
+				const removeBtn = new Graphics()
+				const btnSize = 24
+				removeBtn.circle(0, 0, btnSize / 2)
+				removeBtn.fill({ color: 0xff4d4f, alpha: 0.9 })
+				removeBtn.stroke({ color: 0xffffff, width: 2 })
+
+				const xMark = new Text({
+					text: '✕',
+					style: {
+						fontFamily: 'Arial',
+						fontSize: 14,
+						fill: 0xffffff,
+						fontWeight: 'bold',
+					},
+				})
+				xMark.anchor.set(0.5)
+				removeBtn.addChild(xMark)
+
+				// Position top-right
+				removeBtn.x = r * 0.7
+				removeBtn.y = -r * 0.7
+				removeBtn.eventMode = 'static'
+				removeBtn.cursor = 'pointer'
+
+				removeBtn.on('pointerover', () => {
+					removeBtn.scale.set(1.2)
+				})
+				removeBtn.on('pointerout', () => {
+					removeBtn.scale.set(1.0)
+				})
+				removeBtn.on('pointertap', e => {
+					e.stopPropagation() // Prevent ball tap
+					try {
+						let cfg: Record<string, number> = {}
+						try {
+							cfg =
+								JSON.parse(
+									localStorage.getItem('configuredMap') ||
+										'{}'
+								) || {}
+						} catch (_) {}
+						if (cfg[newColor]) {
+							delete cfg[newColor]
+							localStorage.setItem(
+								'configuredMap',
+								JSON.stringify(cfg)
+							)
+							root.emit('refreshConfigured')
+							// Trigger self-update to revert to bubble
+							root.emit('updateBallSprite', i, newColor)
+						}
+					} catch (err) {
+						console.error('Home/removeConfig error', err)
+					}
+				})
+
+				container.addChild(removeBtn)
 			}
-			// attach without per-child scaling; scale the container to keep slot width consistent
-			if (trailSpriteNew) {
-				container.addChild(trailSpriteNew as Sprite)
-			}
-			if (ballSpriteNew) {
-				container.addChild(ballSpriteNew as Sprite)
-			}
-			// compute new container scale based on fresh base width to preserve slot width
-			const freshMetrics = ((fresh as any).userData as any) || {
-				baseWidth: ballSpriteNew?.width || 1,
-				trailBottomOffset: (ballSpriteNew?.height || 0) * 0.5,
-			}
-			const baseWNew =
-				Number(freshMetrics.baseWidth) ||
-				(ballSpriteNew?.texture?.width as number) ||
-				(ballSpriteNew?.width as number) ||
-				1
-			const sNew = Math.max(0.0001, (ballWidths[i] || 1) / baseWNew)
-			container.scale.set(sNew)
-			const trailBottomOffsetNew =
-				Number(freshMetrics.trailBottomOffset) ||
-				(ballSpriteNew?.height || 0) * 0.5
-			const u0 = (container as any).userData || {}
-			const origX = Number(u0.origX) || Math.round(container.x)
-			const origY = Number(u0.origY) || Math.round(container.y)
-			container.x = origX
-			container.y = origY
 			;(container as any).userData = {
 				...(container as any).userData,
 				ball: ballSpriteNew,
 				trail: trailSpriteNew,
 				bubble: undefined,
-				baseWidth: baseWNew,
-				trailBottomOffset: trailBottomOffsetNew,
-				origX,
-				origY,
 			}
-			// update color index mapping
-			const prevColor = colors[i] as BallColor
-			let swapIdx = -1
-			for (let j = 0; j < colors.length; j++) {
-				if (j !== i && colors[j] === (newColor as any)) {
-					swapIdx = j
-					break
-				}
-			}
-			if (swapIdx >= 0) {
-				colors[swapIdx] = prevColor as any
-			}
-			colors[i] = newColor as any
-			// persist slot color mapping to localStorage
-			try {
-				localStorage.setItem('slotColors', JSON.stringify(colors))
-				console.log('LocalStorage/slotColors updated', { colors })
-			} catch (_) {}
-			// restore locked trail gap for this slot to preserve spacing
-			try {
-				const target = (
-					Array.isArray(LOCKED_YELLOW_GAPS) &&
-					typeof LOCKED_YELLOW_GAPS[i] === 'number'
-						? LOCKED_YELLOW_GAPS[i]
-						: YELLOW_GAP_LOCKED
-				) as number
-				setGapTarget(i, target)
-				console.log('Home/gapRestore', { index: i, target })
-			} catch (_) {}
-			// update configured UI (number/ring) to reflect new color mapping
-			root.emit('refreshConfigured')
-			try {
-				const hasBubbleAfter = !!((container as any).userData
-					?.bubble as Graphics | undefined)
-				const hasBallAfter = !!((container as any).userData?.ball as
-					| Sprite
-					| undefined)
-				console.log('Home/updateBallSprite done', {
-					index: i,
-					color: newColor,
-					hasBallAfter,
-					hasBubbleAfter,
-				})
-			} catch (_) {}
-		} catch (_) {}
+		} catch (err) {
+			console.error('Home/updateBallSprite error', err)
+		}
 	})
 
 	// background alignment unchanged
@@ -1728,7 +1606,12 @@ export async function createHomeScene(w: number, h: number) {
 		}
 	}
 
-	if (SHOW_DEBUG) {
+	// Collapsible Debug UI
+	{
+		const debugContainer = new Container()
+		debugContainer.visible = false
+		content.addChild(debugContainer)
+
 		const debug = new Graphics()
 		const lefts = xPositions.map((x, i) => x - ballWidths[i] / 2)
 		const rights = xPositions.map((x, i) => x + ballWidths[i] / 2)
@@ -1754,12 +1637,12 @@ export async function createHomeScene(w: number, h: number) {
 			label.x = Math.round((rights[i] + lefts[i + 1]) / 2)
 			label.y = yTop - 36
 			label.roundPixels = true
-			label.resolution = Math.min(window.devicePixelRatio || 1, 2)
+			label.resolution = window.devicePixelRatio || 1
 			labels.push(label)
 		}
 		debug.stroke({ color: 0xff0077, alpha: 0.9, width: 3 })
-		content.addChild(debug)
-		labels.forEach(l => content.addChild(l))
+		debugContainer.addChild(debug)
+		labels.forEach(l => debugContainer.addChild(l))
 
 		const trailDebug = new Graphics()
 		const trailLabels: Text[] = []
@@ -1793,12 +1676,38 @@ export async function createHomeScene(w: number, h: number) {
 			label.x = xLine
 			label.y = Math.round(y1 - 18)
 			label.roundPixels = true
-			label.resolution = Math.min(window.devicePixelRatio || 1, 2)
+			label.resolution = window.devicePixelRatio || 1
 			trailLabels.push(label)
 		}
 		trailDebug.stroke({ color: 0xffff00, alpha: 0.9, width: 3 })
-		content.addChild(trailDebug)
-		trailLabels.forEach(l => content.addChild(l))
+		debugContainer.addChild(trailDebug)
+		trailLabels.forEach(l => debugContainer.addChild(l))
+
+		// Toggle Button
+		const dbgToggle = new Graphics()
+		dbgToggle.roundRect(0, 0, 80, 30, 8)
+		dbgToggle.fill({ color: 0x333333, alpha: 0.8 })
+		dbgToggle.stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
+		dbgToggle.x = DESIGN_W - 100
+		dbgToggle.y = DESIGN_H - 50
+		dbgToggle.eventMode = 'static'
+		dbgToggle.cursor = 'pointer'
+		const dbgText = new Text({
+			text: 'Debug',
+			style: { fontFamily: 'system-ui', fontSize: 14, fill: 0xffffff },
+		})
+		dbgText.anchor = 0.5
+		dbgText.x = dbgToggle.x + 40
+		dbgText.y = dbgToggle.y + 15
+		dbgText.resolution = window.devicePixelRatio || 1
+		content.addChild(dbgToggle)
+		content.addChild(dbgText)
+
+		dbgToggle.on('pointertap', () => {
+			const v = !debugContainer.visible
+			debugContainer.visible = v
+			dbgText.text = v ? 'Hide' : 'Debug'
+		})
 	}
 
 	{
@@ -1941,13 +1850,9 @@ export async function createHomeScene(w: number, h: number) {
 		}
 	}
 
-	let remaining = 180
-	const tick = () => {
-		remaining = Math.max(0, remaining - 1)
-		countdown.text = `Countdown ${remaining}`
-		gsap.fromTo(countdown, { alpha: 0.6 }, { alpha: 1, duration: 0.2 })
-	}
+	const tick = () => {}
 	const interval = setInterval(tick, 1000)
+
 	root.on('destroyed', () => clearInterval(interval))
 	root.on('destroyed', () => {
 		stopBGM()
@@ -1961,6 +1866,10 @@ export async function createHomeScene(w: number, h: number) {
 
 	// apply global scanline filter to the whole scene
 	// no filters applied
+
+	try {
+		autoStartBGM()
+	} catch (_) {}
 
 	return root
 }

@@ -11,7 +11,7 @@ import { createBall, BallColor } from '@/modules/ball'
 import { gsap } from 'gsap'
 import { playClickSound, playConfirmSound } from '@/audio/sfx'
 
-async function loadConfigBackgroundTexture(): Promise<Texture | null> {
+export async function loadConfigBackgroundTexture(): Promise<Texture | null> {
 	const candidates = [
 		'/assets/bg/bg_config.webp',
 		'/assets/bg/bg_config.png',
@@ -41,41 +41,88 @@ export async function createConfiguratorScene(
 	const root = new Container()
 	const content = new Container()
 	root.addChild(content)
-	const bgTex = await loadConfigBackgroundTexture()
-	if (bgTex) {
-		const sprite = new Sprite({ texture: bgTex })
-		sprite.anchor = 0.5
-		sprite.x = Math.round(w / 2)
-		sprite.y = Math.round(h / 2)
-		const s = Math.max(w / bgTex.width, h / bgTex.height)
-		sprite.scale.set(s)
-		content.addChildAt(sprite, 0)
-	} else {
-		const bg = new Graphics()
-		bg.rect(0, 0, w, h)
-		bg.fill({ color: 0x0e0e12 })
-		content.addChild(bg)
-	}
-	let center = await createBall(color)
-	center.scale.set(0.45)
-	center.x = Math.round(w / 2)
-	center.y = Math.round(h / 2)
-	content.addChild(center)
-	gsap.to(center, {
-		rotation: 0.02,
-		yoyo: true,
-		repeat: -1,
-		duration: 4.0,
-		ease: 'sine.inOut',
+
+	// Containers for layering
+	const bgContainer = new Container()
+	const centerContainer = new Container()
+	const uiContainer = new Container()
+	content.addChild(bgContainer)
+	content.addChild(centerContainer)
+	content.addChild(uiContainer)
+
+	// Immediate solid background to prevent black screen during load
+	const placeholderBg = new Graphics()
+	placeholderBg.rect(0, 0, w, h)
+	placeholderBg.fill({ color: 0x0e0e12 })
+	bgContainer.addChild(placeholderBg)
+
+	// Async Background Load
+	loadConfigBackgroundTexture().then(bgTex => {
+		if (bgTex) {
+			const sprite = new Sprite({ texture: bgTex })
+			sprite.anchor = 0.5
+			sprite.x = Math.round(w / 2)
+			sprite.y = Math.round(h / 2)
+			const s = Math.max(w / bgTex.width, h / bgTex.height)
+			sprite.scale.set(s)
+			bgContainer.addChild(sprite)
+			// Optional: fade in or just cover the placeholder
+			sprite.alpha = 0
+			gsap.to(sprite, { alpha: 1, duration: 0.3 })
+		}
 	})
-	gsap.to(center.scale, {
-		x: center.scale.x * 1.03,
-		y: center.scale.y * 1.03,
-		yoyo: true,
-		repeat: -1,
-		duration: 3.2,
-		ease: 'sine.inOut',
+
+	// Async Center Ball Load
+	createBall(color).then(center => {
+		center.scale.set(0.45)
+		center.x = Math.round(w / 2)
+		center.y = Math.round(h / 2)
+		centerContainer.addChild(center)
+		gsap.to(center, {
+			rotation: 0.02,
+			yoyo: true,
+			repeat: -1,
+			duration: 4.0,
+			ease: 'sine.inOut',
+		})
+		gsap.to(center.scale, {
+			x: center.scale.x * 1.03,
+			y: center.scale.y * 1.03,
+			yoyo: true,
+			repeat: -1,
+			duration: 3.2,
+			ease: 'sine.inOut',
+		})
+
+		const currentCircle = new Graphics()
+		currentCircle.circle(
+			0,
+			0,
+			Math.max(center.width, center.height) * 0.064
+		)
+		currentCircle.fill({ color: 0x000000, alpha: 0.85 })
+		currentCircle.x = center.x
+		currentCircle.y = center.y
+		centerContainer.addChild(currentCircle)
+
+		const currentText = new Text({
+			text: '01',
+			style: { fontFamily: 'system-ui', fontSize: 48, fill: 0x98ffb3 },
+		})
+		currentText.anchor = 0.5
+		currentText.x = currentCircle.x
+		currentText.y = currentCircle.y
+		currentText.roundPixels = true
+		currentText.resolution = Math.min(window.devicePixelRatio || 1, 2)
+		centerContainer.addChild(currentText)
+
+		// Update current text update logic to reference this text
+		// We need to expose currentText to renderSlots
+		// For now, we can attach it to centerContainer or pass it
+		;(centerContainer as any).currentText = currentText
+		renderSlots() // Initial render to update text
 	})
+
 	const numberLabel = new Text({
 		text: 'SELECT NUMBER',
 		style: { fontFamily: 'system-ui', fontSize: 18, fill: 0xe6f7ff },
@@ -84,12 +131,12 @@ export async function createConfiguratorScene(
 	numberLabel.x = Math.round(w * 0.17)
 	numberLabel.y = Math.round(h * 0.26)
 	numberLabel.roundPixels = true
-	numberLabel.resolution = Math.min(window.devicePixelRatio || 1, 2)
-	content.addChild(numberLabel)
+	numberLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
+	uiContainer.addChild(numberLabel)
 	const panel = new Container()
 	panel.x = Math.round(w * 0.84)
 	panel.y = Math.round(h * 0.5)
-	content.addChild(panel)
+	uiContainer.addChild(panel)
 	const frameW = Math.round(w * 0.08)
 	const frameH = Math.round(h * 0.6)
 	const frame = new Graphics()
@@ -137,93 +184,17 @@ export async function createConfiguratorScene(
 		panel.addChild(t)
 		slots.push({ chip, text: t })
 	}
-	const currentCircle = new Graphics()
-	currentCircle.circle(0, 0, Math.max(center.width, center.height) * 0.064)
-	currentCircle.fill({ color: 0x000000, alpha: 0.85 })
-	currentCircle.x = center.x
-	currentCircle.y = center.y
-	content.addChild(currentCircle)
-	const currentText = new Text({
-		text: '01',
-		style: { fontFamily: 'system-ui', fontSize: 48, fill: 0x98ffb3 },
-	})
-	currentText.anchor = 0.5
-	currentText.x = currentCircle.x
-	currentText.y = currentCircle.y
-	currentText.roundPixels = true
-	currentText.resolution = Math.min(window.devicePixelRatio || 1, 2)
-	content.addChild(currentText)
 
-	// Top status header and countdown
-	const header = new Container()
-	header.x = Math.round(w * 0.5)
-	header.y = Math.round(h * 0.08)
-	content.addChild(header)
-	const dot = new Graphics()
-	dot.circle(0, 0, 6)
-	dot.fill({ color: 0x00ff66 })
-	dot.x = -120
-	header.addChild(dot)
-	const title = new Text({
-		text: 'LIVEBET WINDS UPS',
-		style: { fontFamily: 'system-ui', fontSize: 20, fill: 0xe6f7ff },
-	})
-	title.anchor = 0.5
-	title.x = 0
-	title.y = 0
-	header.addChild(title)
-	const countdownPill = new Graphics()
-	countdownPill.roundRect(-90, -18, 180, 36, 12)
-	countdownPill.fill({ color: 0x0a0f12, alpha: 0.7 })
-	countdownPill.stroke({ color: 0x98ffb3, width: 2, alpha: 0.6 })
-	countdownPill.x = Math.round(w * 0.5)
-	const countdownY = Math.round(header.y + 44)
-	countdownPill.y = countdownY
-	content.addChild(countdownPill)
-	const countdownText = new Text({
-		text: 'Countdown 10',
-		style: { fontFamily: 'system-ui', fontSize: 18, fill: 0xe6f7ff },
-	})
-	countdownText.anchor = 0.5
-	countdownText.x = countdownPill.x
-	countdownText.y = countdownPill.y
-	content.addChild(countdownText)
-	const loader = new Graphics()
-	const loaderR = 14
-	loader.x = Math.round(countdownPill.x - 90 - loaderR - 12)
-	loader.y = countdownPill.y
-	content.addChild(loader)
-	const renderLoader = (p: number) => {
-		if (!(loader as any)) return
-		loader.clear()
-		loader.circle(0, 0, loaderR)
-		loader.stroke({ color: 0x98ffb3, width: 2, alpha: 0.18 })
-		loader.arc(0, 0, loaderR, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2)
-		loader.stroke({ color: 0x98ffb3, width: 3, alpha: 0.9 })
-	}
-	const progress = { v: 0 }
-	renderLoader(0)
-	const tween = gsap.to(progress, {
-		v: 1,
-		duration: 10,
-		ease: 'linear',
-		onUpdate: () => {
-			const remain = Math.max(0, 10 - Math.floor(progress.v * 10))
-			countdownText.text = `Countdown ${remain}`
-			renderLoader(progress.v)
-		},
-	})
-	root.on('destroyed', () => {
-		try {
-			tween.kill()
-		} catch (_) {}
-	})
+	// Removed sync center circle/text creation (moved to async block)
+	// Need to handle missing currentText in renderSlots
+
+	// Top status header removed
 
 	// Left options (Color / Number)
 	const leftOptions = new Container()
 	leftOptions.x = Math.round(w * 0.12)
 	leftOptions.y = Math.round(h * 0.5)
-	content.addChild(leftOptions)
+	uiContainer.addChild(leftOptions)
 	const optSpacing = 80
 	const makeOption = (label: string, idx: number) => {
 		const chip = new Graphics()
@@ -275,7 +246,11 @@ export async function createConfiguratorScene(
 				alpha: i === 2 ? 0.9 : 0.4,
 			})
 		}
-		currentText.text = `${String(numbers[selectedIndex]).padStart(2, '0')}`
+		// Safely access currentText if available
+		const ct = (centerContainer as any).currentText as Text | undefined
+		if (ct) {
+			ct.text = `${String(numbers[selectedIndex]).padStart(2, '0')}`
+		}
 	}
 	const clampIndex = (i: number) =>
 		Math.max(0, Math.min(numbers.length - 1, i))
@@ -316,7 +291,7 @@ export async function createConfiguratorScene(
 	const colorPanel = new Container()
 	colorPanel.x = panel.x
 	colorPanel.y = panel.y
-	content.addChild(colorPanel)
+	uiContainer.addChild(colorPanel)
 	const frame2 = new Graphics()
 	frame2.roundRect(-frameW / 2, -frameH / 2, frameW, frameH, 16)
 	frame2.fill({ color: 0x0a0f12, alpha: 0.8 })
@@ -324,7 +299,9 @@ export async function createConfiguratorScene(
 	colorPanel.addChild(frame2)
 	const colorSlots: { chip: Graphics; item: Container; key: BallColor }[] = []
 	const controlSpacing = Math.round((frameH - 40) / colors.length)
-	for (let i = 0; i < slotsY.length; i++) {
+
+	// Async Slot Creation
+	const slotPromises = colors.map(async (k, i) => {
 		const slotY =
 			-frameH / 2 +
 			20 +
@@ -343,7 +320,7 @@ export async function createConfiguratorScene(
 		item.y = slotY
 		item.eventMode = 'static'
 		item.cursor = 'pointer'
-		const k = colors[i] as BallColor
+
 		const pv = await createBall(k, { noFX: true })
 		pv.scale.set(0.18)
 		pv.x = 0
@@ -361,42 +338,85 @@ export async function createConfiguratorScene(
 					try {
 						console.log('Configurator/color disabled', {
 							pick: k,
-							usedColors,
-							originalColor,
+							used: currentUsed,
 						})
 					} catch (_) {}
-					errorLabel.text = 'Color already used'
-					errorLabel.alpha = 1
-					gsap.fromTo(
-						errorLabel,
-						{ alpha: 0.0, y: errorLabel.y - 6 },
-						{ alpha: 1, y: errorLabel.y, duration: 0.18 }
-					)
-					gsap.to(errorLabel, { alpha: 0, delay: 1.2, duration: 0.3 })
+					// Show error feedback
+					const errorLabel = new Text({
+						text: 'Taken',
+						style: {
+							fontFamily: 'system-ui',
+							fontSize: 14,
+							fill: 0xff4444,
+							fontWeight: 'bold',
+						},
+					})
+					errorLabel.anchor = 0.5
+					errorLabel.x = 0
+					errorLabel.y = 0
+					item.addChild(errorLabel)
+					pv.alpha = 0.2
+					gsap.to(errorLabel, {
+						y: -20,
+						alpha: 0,
+						duration: 1.0,
+						delay: 0.5,
+						onComplete: () => {
+							item.removeChild(errorLabel)
+							pv.alpha = 1
+						},
+					})
 					return
 				}
-				const b = await createBall(k, { noFX: true })
-				b.scale.set(center.scale.x)
-				b.x = center.x
-				b.y = center.y
-				content.addChild(b)
-				try {
-					content.removeChild(center)
-					;(center as any)?.destroy?.({ children: true })
-				} catch (_) {}
-				center = b
-				color = k
-				currentCircle.x = center.x
-				currentCircle.y = center.y
-				currentText.x = center.x
-				currentText.y = center.y
-				renderColorSlots()
+				// Select color
+				playConfirmSound()
+				const newScene = await createConfiguratorScene(
+					w,
+					h,
+					k,
+					playerId,
+					usedColors,
+					slotIndex,
+					originalColor
+				)
+
+				// Attempt to replace the scene at the stage level to avoid nesting
+				const currentRoot = content.parent
+				if (currentRoot && currentRoot.parent) {
+					const stage = currentRoot.parent
+					stage.removeChild(currentRoot)
+					stage.addChild(newScene)
+					// Update global reference if possible (optional, but good for debugging)
+					try {
+						if (
+							(window as any).__app &&
+							(window as any).__app.stage
+						) {
+							// Check if main.ts configurator var needs update?
+							// We can't reach it easily. But visual replacement is enough.
+						}
+					} catch (_) {}
+				} else if (currentRoot) {
+					// Fallback if not attached to stage yet (unlikely)
+					currentRoot.removeChildren()
+					currentRoot.addChild(newScene)
+				}
 			})()
 		})
-		colorPanel.addChild(chip)
-		colorPanel.addChild(item)
-		colorSlots.push({ chip, item, key: k })
-	}
+		return { chip, item, key: k, index: i }
+	})
+
+	Promise.all(slotPromises).then(results => {
+		results
+			.sort((a, b) => a.index - b.index)
+			.forEach(r => {
+				colorPanel.addChild(r.chip)
+				colorPanel.addChild(r.item)
+				colorSlots.push(r)
+			})
+		renderColorSlots()
+	})
+
 	const renderColorSlots = () => {
 		for (let i = 0; i < colorSlots.length; i++) {
 			const s = colorSlots[i]
@@ -420,7 +440,9 @@ export async function createConfiguratorScene(
 			s.item.cursor = disabled ? 'not-allowed' : 'pointer'
 		}
 	}
-	renderColorSlots()
+	// Initial empty render (will be populated when promises resolve)
+	// renderColorSlots() // No slots yet
+
 	setTab('color')
 	const errorLabel = new Text({
 		text: '',
@@ -430,7 +452,7 @@ export async function createConfiguratorScene(
 	errorLabel.x = Math.round(w / 2)
 	errorLabel.y = Math.round(h * 0.86)
 	errorLabel.alpha = 0
-	content.addChild(errorLabel)
+	uiContainer.addChild(errorLabel)
 	const mintBtn = new Graphics()
 	mintBtn.roundRect(0, 0, 220, 50, 12)
 	mintBtn.fill({ color: 0xff6b00, alpha: 0.9 })
@@ -438,7 +460,7 @@ export async function createConfiguratorScene(
 	mintBtn.y = Math.round(h * 0.9)
 	mintBtn.eventMode = 'static'
 	mintBtn.cursor = 'pointer'
-	content.addChild(mintBtn)
+	uiContainer.addChild(mintBtn)
 	const mintLabel = new Text({
 		text: 'SAVE',
 		style: { fontFamily: 'system-ui', fontSize: 20, fill: 0x000000 },
@@ -446,7 +468,7 @@ export async function createConfiguratorScene(
 	mintLabel.anchor = 0.5
 	mintLabel.x = Math.round(mintBtn.x + 110)
 	mintLabel.y = Math.round(mintBtn.y + 25)
-	content.addChild(mintLabel)
+	uiContainer.addChild(mintLabel)
 	mintBtn.on('pointertap', async (ev: any) => {
 		playConfirmSound()
 		const number = Math.max(
@@ -619,6 +641,104 @@ export async function createConfiguratorScene(
 			input.addEventListener('keydown', e => {
 				if ((e as KeyboardEvent).key === 'Enter') submit()
 			})
+			// Draggable logic
+			let isDragging = false
+			let dragStartX = 0
+			let dragStartY = 0
+			let initialLeft = 0
+			let initialTop = 0
+
+			const onDragStart = (e: MouseEvent | TouchEvent) => {
+				const target = e.target as HTMLElement
+				// Allow dragging on pill (BUTTON) but handle click vs drag
+				if (target.tagName === 'INPUT') return
+				// If button is not the pill, prevent drag (e.g. emoji buttons)
+				if (target.tagName === 'BUTTON' && target !== pill) return
+
+				isDragging = true
+				const clientX =
+					'touches' in e
+						? e.touches[0].clientX
+						: (e as MouseEvent).clientX
+				const clientY =
+					'touches' in e
+						? e.touches[0].clientY
+						: (e as MouseEvent).clientY
+
+				dragStartX = clientX
+				dragStartY = clientY
+
+				const rect = overlay.getBoundingClientRect()
+				initialLeft = rect.left
+				initialTop = rect.top
+
+				// Switch to fixed positioning
+				overlay.style.right = 'auto'
+				overlay.style.bottom = 'auto'
+				overlay.style.left = `${initialLeft}px`
+				overlay.style.top = `${initialTop}px`
+			}
+
+			const onDragMove = (e: MouseEvent | TouchEvent) => {
+				if (!isDragging) return
+
+				const clientX =
+					'touches' in e
+						? e.touches[0].clientX
+						: (e as MouseEvent).clientX
+				const clientY =
+					'touches' in e
+						? e.touches[0].clientY
+						: (e as MouseEvent).clientY
+
+				const dx = clientX - dragStartX
+				const dy = clientY - dragStartY
+
+				// Only consider it a drag if moved > 5px
+				if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+					overlay.style.cursor = 'grabbing'
+					overlay.style.left = `${initialLeft + dx}px`
+					overlay.style.top = `${initialTop + dy}px`
+					e.preventDefault()
+				}
+			}
+
+			const onDragEnd = (e: MouseEvent | TouchEvent) => {
+				if (isDragging) {
+					const clientX =
+						'changedTouches' in e
+							? e.changedTouches[0].clientX
+							: (e as MouseEvent).clientX
+					const clientY =
+						'changedTouches' in e
+							? e.changedTouches[0].clientY
+							: (e as MouseEvent).clientY
+					const dx = clientX - dragStartX
+					const dy = clientY - dragStartY
+
+					// If minimal movement, treat as click if it was on pill
+					if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+						const target = e.target as HTMLElement
+						if (target === pill) {
+							setCollapsed(!collapsed)
+						}
+					}
+				}
+				isDragging = false
+				overlay.style.cursor = 'auto'
+			}
+
+			overlay.addEventListener('mousedown', onDragStart)
+			overlay.addEventListener('touchstart', onDragStart, {
+				passive: false,
+			})
+			document.addEventListener('mousemove', onDragMove)
+			document.addEventListener('touchmove', onDragMove, {
+				passive: false,
+			})
+			document.addEventListener('mouseup', onDragEnd)
+			document.addEventListener('touchend', onDragEnd)
+
 			let collapsed = true
 			const setCollapsed = (v: boolean) => {
 				collapsed = v
@@ -635,14 +755,15 @@ export async function createConfiguratorScene(
 					? 'center'
 					: 'flex-start'
 			}
-			pill.addEventListener('click', () => setCollapsed(!collapsed))
+			// pill click handled by onDragEnd
 			setCollapsed(true)
 			root.on('destroyed', () => {
 				try {
 					btn.removeEventListener('click', submit)
-					pill.removeEventListener('click', () =>
-						setCollapsed(!collapsed)
-					)
+					document.removeEventListener('mousemove', onDragMove)
+					document.removeEventListener('touchmove', onDragMove)
+					document.removeEventListener('mouseup', onDragEnd)
+					document.removeEventListener('touchend', onDragEnd)
 					input.remove()
 					btn.remove()
 					emojiRow.remove()

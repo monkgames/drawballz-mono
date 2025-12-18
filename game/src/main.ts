@@ -18,7 +18,9 @@ import {
 	isBGMStarted,
 	startBGMElement,
 	stopBGMElement,
+	autoStartBGM,
 } from '@/audio/bgm'
+import { createRTC } from '@/net/rtc'
 import { createCutsceneScene } from '@/scene/splash'
 import { createBattleScene } from '@/scene/battle'
 import { createConfiguratorScene } from '@/scene/configurator'
@@ -29,10 +31,16 @@ import { createConfiguratorScene } from '@/scene/configurator'
 	} catch (_) {}
 })()
 
-const app = new Application()
+const app = new Application({
+	resolution: Math.max(window.devicePixelRatio || 1, 2),
+	autoDensity: true,
+	antialias: true,
+})
 let home: Container
 let placeholder: Graphics | null = null
 let socket: any = null
+let rtcCtrl: any = null
+let rtcBuffer: any[] = []
 let playerId: 'A' | 'B' | null = null
 let roomId: string | null = null
 let displayName: string | null = null
@@ -260,12 +268,59 @@ function createDebugPanel(w: number, h: number) {
 	dbgPanel.roundRect(0, 0, dbgW, dbgH, 12)
 	dbgPanel.fill({ color: 0x0a0f12, alpha: 0.88 })
 	dbgPanel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.6 })
-	dbg.addChild(dbgPanel)
+
+	// Create toggle button
+	const toggleBtn = new Graphics()
+	const toggleW = 80
+	const toggleH = 32
+	toggleBtn.roundRect(0, 0, toggleW, toggleH, 8)
+	toggleBtn.fill({ color: 0x0a0f12, alpha: 0.8 })
+	toggleBtn.stroke({ color: 0x98ffb3, width: 1, alpha: 0.6 })
+	toggleBtn.eventMode = 'static'
+	toggleBtn.cursor = 'pointer'
+
+	const toggleLabel = new Text({
+		text: 'Debug',
+		style: { fontFamily: 'system-ui', fontSize: 12, fill: 0x98ffb3 },
+	})
+	toggleLabel.anchor = 0.5
+	toggleLabel.x = toggleW / 2
+	toggleLabel.y = toggleH / 2
+	toggleBtn.addChild(toggleLabel)
+
+	// Positioning
+	// Toggle button at bottom-left
+	toggleBtn.x = 0
+	toggleBtn.y = dbgH + 8
+
+	// Panel above it
+	dbgPanel.x = 0
+	dbgPanel.y = 0
 	dbgText.x = 12
 	dbgText.y = 10
+
+	dbg.addChild(dbgPanel)
 	dbg.addChild(dbgText)
+	dbg.addChild(toggleBtn)
+
+	// Interaction
+	const setVisible = (v: boolean) => {
+		dbgPanel!.visible = v
+		dbgText!.visible = v
+		toggleLabel.text = v ? 'Hide' : 'Debug'
+	}
+
+	toggleBtn.on('pointertap', () => {
+		setVisible(!dbgPanel!.visible)
+	})
+
+	// Default collapsed
+	setVisible(false)
+
+	// Container position (bottom-left)
 	dbg.x = 20
-	dbg.y = Math.round(h - dbgH - 20)
+	dbg.y = Math.round(h - dbgH - 20 - toggleH - 8)
+
 	if (!app.stage.children.includes(dbg)) {
 		app.stage.addChild(dbg)
 	} else {
@@ -287,7 +342,11 @@ function updateDebugPanel(s: any) {
 	]
 	dbgText.text = lines.join('\n')
 }
-async function playQuickSplashes(w: number, h: number) {
+async function playQuickSplashes(
+	w: number,
+	h: number,
+	ready?: Promise<unknown>
+) {
 	const root = new Container()
 	const bg = new Graphics()
 	bg.rect(0, 0, w, h)
@@ -295,7 +354,8 @@ async function playQuickSplashes(w: number, h: number) {
 	root.addChild(bg)
 	app.stage.addChild(root)
 	const names = ['splash_mg', 'splash_ig5']
-	for (const n of names) {
+	for (let i = 0; i < names.length; i++) {
+		const n = names[i]
 		const tex = await loadSplashTexture(n)
 		if (!tex) continue
 		const sprite = new Sprite({ texture: tex })
@@ -316,6 +376,11 @@ async function playQuickSplashes(w: number, h: number) {
 			})
 		)
 		await new Promise<void>(resolve => setTimeout(resolve, 700))
+		if (i === names.length - 1 && ready) {
+			try {
+				await ready
+			} catch (_) {}
+		}
 		await new Promise<void>(resolve =>
 			gsap.to(sprite, {
 				alpha: 0,
@@ -419,6 +484,26 @@ async function layout() {
 		} catch (_) {}
 		placeholder = null
 		app.stage.addChild(home)
+
+		// Global audio unlock on first interaction
+		const unlockAudio = async () => {
+			const {
+				ensureAudioUnlocked,
+				tryStartBGMNow,
+				isBGMStarted,
+				isMuted,
+			} = await import('@/audio/bgm')
+			await ensureAudioUnlocked()
+			if (!isMuted() && !isBGMStarted()) {
+				void tryStartBGMNow()
+			}
+			window.removeEventListener('click', unlockAudio)
+			window.removeEventListener('touchstart', unlockAudio)
+		}
+		window.addEventListener('click', unlockAudio)
+		window.addEventListener('touchstart', unlockAudio)
+
+		void autoStartBGM()
 		try {
 			;(window as any).__home = home
 			;(window as any).__app = app
@@ -458,6 +543,16 @@ async function layout() {
 						msg = JSON.parse(raw)
 					} catch (_) {}
 					if (!msg || typeof msg !== 'object') return
+
+					// Buffer early RTC messages if RTC not ready
+					if (msg.type?.startsWith('rtc:') && !rtcCtrl) {
+						console.log(
+							'Main: buffering early RTC message',
+							msg.type
+						)
+						rtcBuffer.push(msg)
+					}
+
 					if (msg.type === 'assigned') {
 						matchPhase = 'assigned'
 						lastMatchEventAt = Date.now()
@@ -688,16 +783,26 @@ async function layout() {
 							} catch (_) {}
 							try {
 								const { createRTC } = await import('@/net/rtc')
-								const rtc = createRTC(
+								if (rtcCtrl) {
+									try {
+										rtcCtrl.stop()
+									} catch (_) {}
+								}
+								rtcCtrl = createRTC(
 									socket as any,
-									(selfId as any) || 'A'
+									(selfId as any) || 'A',
+									rtcBuffer
 								)
-								await rtc.start()
+								rtcBuffer = []
+								try {
+									rtcCtrl.minimize(true)
+								} catch (_) {}
+								await rtcCtrl.start()
 								;(battle as any).once?.(
 									'battle:cleanup',
 									() => {
 										try {
-											rtc.stop()
+											if (rtcCtrl) rtcCtrl.stop()
 										} catch (_) {}
 									}
 								)
@@ -1220,13 +1325,19 @@ async function layout() {
 	}
 }
 async function boot() {
-	const lowEnd = isSlowNetwork() || isMobileDevice()
-	const DPR = lowEnd ? 1 : Math.min(window.devicePixelRatio || 1, 2)
+	const lowEnd = isSlowNetwork()
+	const DPR = Math.max(window.devicePixelRatio || 1, 2)
 	await app.init({
-		antialias: lowEnd ? false : true,
+		antialias: true,
 		backgroundAlpha: 0,
 		resolution: DPR,
 	})
+
+	const savedName = localStorage.getItem('playerName')
+	if (!savedName) {
+		const nameOverlay = document.getElementById('nameOverlay')
+		if (nameOverlay) nameOverlay.style.display = 'grid'
+	}
 	document.body.appendChild(app.canvas)
 	ensureWallet()
 	await getPlayerName()
@@ -1243,36 +1354,30 @@ async function boot() {
 	app.canvas.style.top = '50%'
 	app.canvas.style.transform = 'translate(-50%, -50%)'
 	// Pre-add placeholder and start loading home to avoid a blank stage
-	void layout()
+	const layoutPromise = layout()
 	createHUD(canvasW, canvasH)
 	createDebugPanel(canvasW, canvasH)
-	await playQuickSplashes(canvasW, canvasH)
+	await playQuickSplashes(canvasW, canvasH, layoutPromise)
 	{
-		const muted = (localStorage.getItem('bgmMuted') || '') === '1'
-		if (!muted) {
-			void tryStartBGMNow()
-			const retryStart = async () => {
-				if (!isBGMStarted()) {
-					await ensureAudioUnlocked()
-					await startBGMOnce()
-				}
-			}
-			setTimeout(() => void retryStart(), 800)
-			setTimeout(() => void retryStart(), 3000)
-			if (!isBGMStarted()) {
-				void startBGMElement()
-			}
-			void prefetchBGM()
-			const onFirstGesture = async () => {
-				await ensureAudioUnlocked()
-				await startBGMOnce()
-				stopBGMElement()
-			}
-			document.addEventListener('pointerdown', onFirstGesture, {
-				once: true,
-			})
-			document.addEventListener('keydown', onFirstGesture, { once: true })
+		const {
+			autoStartBGM,
+			ensureAudioUnlocked,
+			startBGMOnce,
+			stopBGMElement,
+			isMuted,
+		} = await import('@/audio/bgm')
+		void autoStartBGM()
+
+		const onFirstGesture = async () => {
+			if (isMuted()) return
+			await ensureAudioUnlocked()
+			await startBGMOnce()
+			stopBGMElement()
 		}
+		document.addEventListener('pointerdown', onFirstGesture, {
+			once: true,
+		})
+		document.addEventListener('keydown', onFirstGesture, { once: true })
 	}
 	// background preload of heavier assets when network is decent
 	if (!isSlowNetwork()) {
@@ -1280,6 +1385,7 @@ async function boot() {
 			// avoid preloading heavy video on boot
 			'/assets/bg/bg_base.webp',
 			'/assets/bg/bg_layer.webp',
+			'/assets/bg/bg_config.webp',
 			'/assets/sprites/balls/green.svg',
 			'/assets/sprites/balls/pink.svg',
 			'/assets/sprites/balls/orange.svg',

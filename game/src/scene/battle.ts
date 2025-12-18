@@ -1,6 +1,7 @@
 import { Container, Graphics, Text } from 'pixi.js'
 import { createBall, BallColor } from '@/modules/ball'
 import { playBeep } from '@/audio/sfx'
+import { toggleSettings } from '@/net/rtc'
 
 type BattleBall = { color: BallColor; number: number }
 
@@ -49,7 +50,7 @@ export async function createBattleScene(
 	const UI_CHAT_H = 160
 	const UI_WIN_PANEL_H = 175
 	const UI_WIN_PANEL_MARGIN = 24
-	const PLAYER_SCALE_MUL = 0.5
+	const PLAYER_SCALE_MUL = 0.65
 	let colorWeights: Record<BallColor, number> = {
 		green: 1,
 		pink: 2,
@@ -58,7 +59,8 @@ export async function createBattleScene(
 		blue: 5,
 	}
 	const chatTopY = Math.round(h - UI_CHAT_H - 120)
-	const playersRowY = Math.max(220, Math.round(h * 0.35))
+	// Move players down to center vertically and avoid overlap with top countdown
+	const playersRowY = Math.round(h * 0.5)
 	const winningRowY = Math.min(
 		Math.round(
 			chatTopY - Math.round(UI_WIN_PANEL_H / 2) - UI_WIN_PANEL_MARGIN
@@ -79,27 +81,65 @@ export async function createBattleScene(
 	divider.stroke({ color: 0x22303a, width: 2, alpha: 0.9 })
 	content.addChild(divider)
 
+	// Add player zones (visual backdrops)
+	const zoneH = 240
+	const zoneY = Math.round(playersRowY - zoneH / 2)
+	const zoneW = Math.round(w * 0.46)
+
+	const createZone = (x: number) => {
+		const g = new Graphics()
+		g.roundRect(0, 0, zoneW, zoneH, 32)
+		g.fill({ color: 0x131619, alpha: 0.85 })
+		g.stroke({ color: 0x334155, width: 1, alpha: 0.5 })
+		// Inner glow/highlight
+		g.roundRect(2, 2, zoneW - 4, zoneH - 4, 30)
+		g.stroke({ color: 0xffffff, width: 2, alpha: 0.05 })
+		g.x = x
+		g.y = zoneY
+		return g
+	}
+
+	const leftZone = createZone(Math.round(w * 0.02))
+	content.addChild(leftZone)
+
+	const rightZone = createZone(Math.round(w - zoneW - w * 0.02))
+	content.addChild(rightZone)
+
 	const leftTitle = new Text({
 		text: selfName || 'You',
-		style: { fontFamily: 'system-ui', fontSize: 28, fill: 0xe6f7ff },
+		style: {
+			fontFamily: 'system-ui',
+			fontSize: 24,
+			fill: 0x98ffb3,
+			fontWeight: '600',
+			letterSpacing: 1,
+		},
 	})
+	leftTitle.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	leftTitle.anchor = 0.5
 	leftTitle.x = Math.round(w * 0.25)
-	leftTitle.y = 80
+	leftTitle.y = zoneY + 32
 	content.addChild(leftTitle)
 
 	const oppBadgeW = 160
 	const oppBadgeH = 44
 	const oppBadge = new Graphics()
-	oppBadge.roundRect(0, 0, oppBadgeW, oppBadgeH, 12)
+	oppBadge.roundRect(0, 0, oppBadgeW, oppBadgeH, 22)
 	oppBadge.fill({ color: 0x0a0f12, alpha: 0.9 })
-	oppBadge.stroke({ color: 0xff4d4f, width: 3, alpha: 0.9 })
+	oppBadge.stroke({ color: 0xff4d4f, width: 2, alpha: 0.8 })
 	oppBadge.x = Math.round(w * 0.75 - oppBadgeW / 2)
-	oppBadge.y = Math.round(64)
+	oppBadge.y = zoneY + 32 - oppBadgeH / 2 // Align with left title vertically
+
 	const oppLabel = new Text({
 		text: opponentName || 'Opponent',
-		style: { fontFamily: 'system-ui', fontSize: 18, fill: 0xe6f7ff },
+		style: {
+			fontFamily: 'system-ui',
+			fontSize: 22,
+			fill: 0xe6f7ff,
+			fontWeight: '600',
+		},
 	})
+	oppLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	oppLabel.anchor = 0.5
 	oppLabel.x = Math.round(oppBadge.x + oppBadgeW / 2)
 	oppLabel.y = Math.round(oppBadge.y + oppBadgeH / 2)
@@ -142,15 +182,17 @@ export async function createBattleScene(
 				text: String(bb.number),
 				style: {
 					fontFamily: 'system-ui',
-					fontSize: 22,
+					fontSize: 26,
 					fill: 0x98ffb3,
+					fontWeight: 'bold',
+					stroke: { color: 0x000000, width: 4 },
 				},
 			})
+			numberLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
 			numberLabel.anchor = 0.5
 			numberLabel.x = ball.x
-			numberLabel.y = Math.round(
-				ball.y - targetWidth * 0.28 * PLAYER_SCALE_MUL
-			)
+			// Center label visually on the ball
+			numberLabel.y = Math.round(ball.y)
 			content.addChild(numberLabel)
 			out.push({ node: ball, label: numberLabel, bb })
 		}
@@ -213,63 +255,81 @@ export async function createBattleScene(
 		text: '',
 		style: { fontFamily: 'system-ui', fontSize: 14, fill: 0xe6f7ff },
 	})
+	dbgText.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	const dbgW = Math.min(320, Math.round(w * 0.36))
 	const dbgH = 140
 	dbgPanel.roundRect(0, 0, dbgW, dbgH, 12)
 	dbgPanel.fill({ color: 0x0a0f12, alpha: 0.9 })
 	dbgPanel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.7 })
+	// Position panel above the toggle button
+	const toggleH = 32
 	dbgPanel.x = Math.round(w - dbgW - 24)
-	dbgPanel.y = Math.round(h - dbgH - 24)
+	dbgPanel.y = Math.round(h - dbgH - 24 - toggleH - 8)
 	dbgText.x = dbgPanel.x + 12
 	dbgText.y = dbgPanel.y + 10
+
+	dbgPanel.visible = false
+	dbgText.visible = false
+
+	const dbgToggle = new Graphics()
+	const tW = 80
+	const tH = toggleH
+	dbgToggle.roundRect(0, 0, tW, tH, 8)
+	dbgToggle.fill({ color: 0x0a0f12, alpha: 0.8 })
+	dbgToggle.stroke({ color: 0x98ffb3, width: 1, alpha: 0.6 })
+	dbgToggle.x = Math.round(w - tW - 24)
+	dbgToggle.y = Math.round(h - tH - 24)
+	dbgToggle.eventMode = 'static'
+	dbgToggle.cursor = 'pointer'
+
+	const tLabel = new Text({
+		text: 'Debug',
+		style: { fontFamily: 'system-ui', fontSize: 12, fill: 0x98ffb3 },
+	})
+	tLabel.anchor = 0.5
+	tLabel.x = dbgToggle.x + tW / 2
+	tLabel.y = dbgToggle.y + tH / 2
+
+	dbgToggle.on('pointertap', () => {
+		const v = !dbgPanel.visible
+		dbgPanel.visible = v
+		dbgText.visible = v
+		tLabel.text = v ? 'Hide' : 'Debug'
+	})
+
 	content.addChild(dbgPanel)
 	content.addChild(dbgText)
-	const weightsPanel = new Graphics()
-	const weightsText = new Text({
-		text: '',
-		style: { fontFamily: 'system-ui', fontSize: 14, fill: 0xe6f7ff },
+	content.addChild(dbgToggle)
+	content.addChild(tLabel)
+
+	// A/V Settings Button
+	const settingsBtn = new Graphics()
+	const sW = 110
+	const sH = 32
+	settingsBtn.roundRect(0, 0, sW, sH, 8)
+	settingsBtn.fill({ color: 0x22303a, alpha: 0.9 })
+	settingsBtn.stroke({ color: 0x98ffb3, width: 1, alpha: 0.7 })
+	settingsBtn.x = Math.round(w - sW - 24)
+	settingsBtn.y = 24
+	settingsBtn.eventMode = 'static'
+	settingsBtn.cursor = 'pointer'
+
+	const sLabel = new Text({
+		text: 'A/V Settings',
+		style: { fontFamily: 'system-ui', fontSize: 12, fill: 0x98ffb3 },
 	})
-	const weightsW = Math.min(280, Math.round(w * 0.34))
-	const weightsH = 170
-	weightsPanel.roundRect(0, 0, weightsW, weightsH, 12)
-	weightsPanel.fill({ color: 0x0a0f12, alpha: 0.9 })
-	weightsPanel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.7 })
-	weightsPanel.x = 24
-	weightsPanel.y = Math.round(h - weightsH - 24)
-	weightsText.x = weightsPanel.x + 12
-	weightsText.y = weightsPanel.y + 10
-	content.addChild(weightsPanel)
-	content.addChild(weightsText)
-	const setWeightsText = () => {
-		const lines = [
-			'Weights',
-			'',
-			'green: ' + String(colorWeights.green || 0),
-			'pink: ' + String(colorWeights.pink || 0),
-			'orange: ' + String(colorWeights.orange || 0),
-			'yellow: ' + String(colorWeights.yellow || 0),
-			'blue: ' + String(colorWeights.blue || 0),
-		]
-		weightsText.text = lines.join('\n')
-	}
-	setWeightsText()
-	;(async () => {
-		try {
-			const res = await fetch(`${API}/weights`).catch(() => null)
-			const j = await res?.json().catch(() => null)
-			const map = (j as any)?.weights || null
-			if (map && typeof map === 'object') {
-				colorWeights = {
-					green: Number(map.green) || colorWeights.green,
-					pink: Number(map.pink) || colorWeights.pink,
-					orange: Number(map.orange) || colorWeights.orange,
-					yellow: Number(map.yellow) || colorWeights.yellow,
-					blue: Number(map.blue) || colorWeights.blue,
-				}
-			}
-		} catch (_) {}
-		setWeightsText()
-	})()
+	sLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
+	sLabel.anchor = 0.5
+	sLabel.x = sW / 2
+	sLabel.y = sH / 2
+	settingsBtn.addChild(sLabel)
+	settingsBtn.on('pointertap', () => toggleSettings())
+	content.addChild(settingsBtn)
+
+	// Weights UI purged
+	const setWeightsText = () => {}
+	;(async () => {})()
+
 	function setDebug(lines: string[]) {
 		dbgText.text = lines.join('\n')
 	}
@@ -305,6 +365,7 @@ export async function createBattleScene(
 		text: '5',
 		style: { fontFamily: 'system-ui', fontSize: 56, fill: 0xffe58f },
 	})
+	countLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	countLabel.anchor = 0.5
 	countLabel.x = Math.round(w / 2)
 	countLabel.y = Math.round(h * 0.24)
@@ -447,8 +508,14 @@ export async function createBattleScene(
 	const showCountdown = async (txt: string, secs: number) => {
 		const title = new Text({
 			text: txt,
-			style: { fontFamily: 'system-ui', fontSize: 18, fill: 0xe6f7ff },
+			style: {
+				fontFamily: 'system-ui',
+				fontSize: 24,
+				fill: 0xe6f7ff,
+				fontWeight: 'bold',
+			},
 		})
+		title.resolution = Math.max(window.devicePixelRatio || 1, 2)
 		title.anchor = 0.5
 		title.x = Math.round(w / 2)
 		title.y = Math.round(playersRowY - 80)
@@ -532,6 +599,7 @@ export async function createBattleScene(
 					},
 				},
 			})
+			titleText.resolution = Math.max(window.devicePixelRatio || 1, 2)
 			titleText.anchor.set(0.5)
 			titleText.x = w / 2
 			titleText.y = h / 2 - 50
@@ -1223,9 +1291,96 @@ export async function createBattleScene(
 	overlay.style.background = 'rgba(10,15,18,0.9)'
 	overlay.style.border = '1px solid #375a44'
 	overlay.style.borderRadius = '14px'
-	overlay.style.zIndex = '9999'
+	overlay.style.zIndex = '5000'
 	overlay.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)'
 	overlay.style.backdropFilter = 'blur(2px)'
+	// Draggable logic
+	let isDragging = false
+	let dragStartX = 0
+	let dragStartY = 0
+	let initialLeft = 0
+	let initialTop = 0
+
+	const onDragStart = (e: MouseEvent | TouchEvent) => {
+		const target = e.target as HTMLElement
+		// Allow dragging on pill (BUTTON) but handle click vs drag
+		if (target.tagName === 'INPUT') return
+		// If button is not the pill, prevent drag (e.g. emoji buttons)
+		if (target.tagName === 'BUTTON' && target !== pill) return
+
+		isDragging = true
+		const clientX =
+			'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX
+		const clientY =
+			'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY
+
+		dragStartX = clientX
+		dragStartY = clientY
+
+		const rect = overlay.getBoundingClientRect()
+		initialLeft = rect.left
+		initialTop = rect.top
+
+		// Switch to fixed positioning
+		overlay.style.right = 'auto'
+		overlay.style.bottom = 'auto'
+		overlay.style.left = `${initialLeft}px`
+		overlay.style.top = `${initialTop}px`
+		// cursor change deferred to move
+	}
+
+	const onDragMove = (e: MouseEvent | TouchEvent) => {
+		if (!isDragging) return
+
+		const clientX =
+			'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX
+		const clientY =
+			'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY
+
+		const dx = clientX - dragStartX
+		const dy = clientY - dragStartY
+
+		// Only consider it a drag if moved > 5px
+		if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+			overlay.style.cursor = 'grabbing'
+			overlay.style.left = `${initialLeft + dx}px`
+			overlay.style.top = `${initialTop + dy}px`
+			e.preventDefault()
+		}
+	}
+
+	const onDragEnd = (e: MouseEvent | TouchEvent) => {
+		if (isDragging) {
+			const clientX =
+				'changedTouches' in e
+					? e.changedTouches[0].clientX
+					: (e as MouseEvent).clientX
+			const clientY =
+				'changedTouches' in e
+					? e.changedTouches[0].clientY
+					: (e as MouseEvent).clientY
+			const dx = clientX - dragStartX
+			const dy = clientY - dragStartY
+
+			// If minimal movement, treat as click if it was on pill
+			if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+				const target = e.target as HTMLElement
+				if (target === pill) {
+					setCollapsed(!collapsed)
+				}
+			}
+		}
+		isDragging = false
+		overlay.style.cursor = 'auto'
+	}
+
+	overlay.addEventListener('mousedown', onDragStart)
+	overlay.addEventListener('touchstart', onDragStart, { passive: false })
+	document.addEventListener('mousemove', onDragMove)
+	document.addEventListener('touchmove', onDragMove, { passive: false })
+	document.addEventListener('mouseup', onDragEnd)
+	document.addEventListener('touchend', onDragEnd)
+
 	const input = document.createElement('input')
 	input.type = 'text'
 	input.placeholder = 'Type a message…'
@@ -1329,6 +1484,11 @@ export async function createBattleScene(
 	overlay.addEventListener('mouseleave', () => setActive(false))
 	root.once('battle:cleanup', () => {
 		try {
+			document.removeEventListener('mousemove', onDragMove)
+			document.removeEventListener('touchmove', onDragMove)
+			document.removeEventListener('mouseup', onDragEnd)
+			document.removeEventListener('touchend', onDragEnd)
+
 			btn.removeEventListener('click', submit)
 			pill.removeEventListener('click', () => setCollapsed(!collapsed))
 			input.remove()

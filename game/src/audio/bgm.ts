@@ -287,3 +287,34 @@ export function stopBGM() {
 	master = null
 	started = false
 }
+
+export function isMuted(): boolean {
+	return (localStorage.getItem('bgmMuted') || '') === '1'
+}
+
+export function setMuted(muted: boolean) {
+	localStorage.setItem('bgmMuted', muted ? '1' : '0')
+	if (muted) {
+		stopBGM()
+		stopBGMElement()
+	} else {
+		void autoStartBGM()
+	}
+}
+
+export function toggleBGM() {
+	setMuted(!isMuted())
+}
+
+export async function autoStartBGM() {
+	if (isMuted()) return
+	void tryStartBGMNow()
+	if (!isBGMStarted()) {
+		await ensureAudioUnlocked()
+		await startBGMOnce()
+	}
+	if (!isBGMStarted()) {
+		void startBGMElement()
+	}
+	void prefetchBGM()
+}
