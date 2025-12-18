@@ -13,6 +13,12 @@ export function createRTC(
 	role: 'A' | 'B',
 	initialMessages: any[] = []
 ) {
+	console.log(
+		'RTC: Created with role',
+		role,
+		'buffered messages:',
+		initialMessages.length
+	)
 	let pc: RTCPeerConnection | null = null
 	let localStream: MediaStream | null = null
 	let remoteStream: MediaStream | null = null
@@ -548,6 +554,10 @@ export function createRTC(
 	}
 
 	const startPeerConnection = () => {
+		console.log(
+			'RTC: startPeerConnection called, localStream:',
+			!!localStream
+		)
 		if (!localStream) return
 		pc = new RTCPeerConnection({
 			iceServers,
@@ -568,6 +578,16 @@ export function createRTC(
 		const audioTransceiver = pc.addTransceiver(audioTrack || 'audio', {
 			direction: 'sendrecv',
 			streams: audioTrack && localStream ? [localStream] : [],
+		})
+		console.log('RTC: Transceivers added', {
+			video: {
+				mid: videoTransceiver.mid,
+				direction: videoTransceiver.direction,
+			},
+			audio: {
+				mid: audioTransceiver.mid,
+				direction: audioTransceiver.direction,
+			},
 		})
 
 		pc.ontrack = ev => {
@@ -617,11 +637,23 @@ export function createRTC(
 						console.log(
 							'RTC: Remote video playing',
 							remoteEl.videoWidth,
-							remoteEl.videoHeight
+							remoteEl.videoHeight,
+							'muted:',
+							remoteEl.muted,
+							'paused:',
+							remoteEl.paused,
+							'srcObject:',
+							!!remoteEl.srcObject
 						)
 					} else {
 						console.log(
-							'RTC: Waiting for remote video dimensions...'
+							'RTC: Waiting for remote video dimensions...',
+							'readyState:',
+							remoteEl?.readyState,
+							'paused:',
+							remoteEl?.paused,
+							'srcObject:',
+							!!remoteEl?.srcObject
 						)
 					}
 				}, 1000)
@@ -716,6 +748,14 @@ export function createRTC(
 	}
 
 	const handleSignal = async (msg: any) => {
+		console.log(
+			'RTC: handleSignal',
+			msg.type,
+			'Role:',
+			role,
+			'PC Ready:',
+			!!pc
+		)
 		if (!pc) {
 			console.log('RTC: PC not ready, queuing signal', msg.type)
 			pendingSignals.push(msg)
@@ -723,7 +763,10 @@ export function createRTC(
 		}
 
 		if (msg.type === 'rtc:offer') {
-			console.log('RTC: received offer')
+			console.log(
+				'RTC: received offer',
+				msg.payload?.sdp?.substring(0, 50) + '...'
+			)
 			// Glare handling: if we have a local offer and we are the "polite" peer (role B), rollback.
 			// Or simplified: if we are role B, we always accept the offer.
 			// If we are role A, we ignore incoming offers (we are the offerer).
@@ -767,6 +810,10 @@ export function createRTC(
 
 				const ans = await pc.createAnswer()
 				await pc.setLocalDescription(ans)
+				console.log(
+					'RTC: Created and set local answer',
+					ans.sdp?.substring(0, 50) + '...'
+				)
 				signaler.send({
 					type: 'rtc:answer',
 					payload: ans,
@@ -792,16 +839,21 @@ export function createRTC(
 			}
 		}
 		if (msg.type === 'rtc:answer') {
-			console.log('RTC: received answer')
+			console.log(
+				'RTC: received answer',
+				msg.payload?.sdp?.substring(0, 50) + '...'
+			)
 			try {
 				await pc.setRemoteDescription(
 					new RTCSessionDescription(msg.payload)
 				)
+				console.log('RTC: Remote description set from answer')
 			} catch (e) {
 				console.error('RTC: handle answer error', e)
 			}
 		}
 		if (msg.type === 'rtc:ice') {
+			console.log('RTC: received ICE candidate')
 			try {
 				if (pc.remoteDescription) {
 					await pc.addIceCandidate(new RTCIceCandidate(msg.payload))

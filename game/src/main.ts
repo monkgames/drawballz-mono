@@ -788,6 +788,10 @@ async function layout() {
 										rtcCtrl.stop()
 									} catch (_) {}
 								}
+								console.log('Main: createRTC init', {
+									role: (selfId as any) || 'A',
+									bufferLen: rtcBuffer.length,
+								})
 								rtcCtrl = createRTC(
 									socket as any,
 									(selfId as any) || 'A',
