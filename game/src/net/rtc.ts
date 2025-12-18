@@ -553,6 +553,38 @@ export function createRTC(
 		await tryGetMedia()
 	}
 
+	const updateConnectionStatus = (state: string) => {
+		if (overlay) {
+			const statusEl =
+				document.getElementById('rtcStatus') ||
+				document.createElement('div')
+			statusEl.id = 'rtcStatus'
+			statusEl.style.position = 'absolute'
+			statusEl.style.top = '10px'
+			statusEl.style.left = '50%'
+			statusEl.style.transform = 'translateX(-50%)'
+			statusEl.style.padding = '4px 8px'
+			statusEl.style.borderRadius = '4px'
+			statusEl.style.fontSize = '12px'
+			statusEl.style.fontWeight = 'bold'
+			statusEl.style.color = '#fff'
+			statusEl.style.zIndex = '10000'
+
+			if (state === 'connected' || state === 'completed') {
+				statusEl.style.background = 'rgba(0, 255, 0, 0.5)'
+				statusEl.textContent = 'Connected'
+			} else if (state === 'failed' || state === 'disconnected') {
+				statusEl.style.background = 'rgba(255, 0, 0, 0.5)'
+				statusEl.textContent = 'Disconnected'
+			} else {
+				statusEl.style.background = 'rgba(255, 165, 0, 0.5)'
+				statusEl.textContent = state
+			}
+			if (!document.getElementById('rtcStatus'))
+				overlay.appendChild(statusEl)
+		}
+	}
+
 	const startPeerConnection = () => {
 		console.log(
 			'RTC: startPeerConnection called, localStream:',
@@ -692,45 +724,15 @@ export function createRTC(
 				console.error('RTC: negotiation error', err)
 			}
 		}
-		pc.oniceconnectionstatechange = () => {
-			console.log('RTC: ICE State:', pc?.iceConnectionState)
-			if (overlay && pc) {
-				const statusEl =
-					document.getElementById('rtcStatus') ||
-					document.createElement('div')
-				statusEl.id = 'rtcStatus'
-				statusEl.style.position = 'absolute'
-				statusEl.style.top = '10px'
-				statusEl.style.left = '50%'
-				statusEl.style.transform = 'translateX(-50%)'
-				statusEl.style.padding = '4px 8px'
-				statusEl.style.borderRadius = '4px'
-				statusEl.style.fontSize = '12px'
-				statusEl.style.fontWeight = 'bold'
-				statusEl.style.color = '#fff'
-				statusEl.style.zIndex = '10000'
-
-				const state = pc.iceConnectionState
-				if (state === 'connected' || state === 'completed') {
-					statusEl.style.background = 'rgba(0, 255, 0, 0.5)'
-					statusEl.textContent = 'Connected'
-				} else if (state === 'failed' || state === 'disconnected') {
-					statusEl.style.background = 'rgba(255, 0, 0, 0.5)'
-					statusEl.textContent = 'Disconnected'
-				} else {
-					statusEl.style.background = 'rgba(255, 165, 0, 0.5)'
-					statusEl.textContent = state
-				}
-				if (!document.getElementById('rtcStatus'))
-					overlay.appendChild(statusEl)
-			}
-			if (pc?.iceConnectionState === 'failed') {
-				console.warn('RTC: ICE failed, restarting ICE...')
-				pc?.restartIce()
-			}
-		}
 		pc.onconnectionstatechange = () => {
 			console.log('RTC: Connection state:', pc?.connectionState)
+			if (pc?.connectionState === 'failed') {
+				console.error('RTC: Connection failed! Need restart?')
+			}
+		}
+		pc.oniceconnectionstatechange = () => {
+			console.log('RTC: ICE State:', pc?.iceConnectionState)
+			updateConnectionStatus(pc?.iceConnectionState || 'new')
 		}
 		pc.onicegatheringstatechange = () => {
 			console.log('RTC: ICE gathering:', pc?.iceGatheringState)
@@ -801,19 +803,30 @@ export function createRTC(
 				// Force transceivers to sendrecv if we have local tracks
 				// This ensures the Answer SDP contains a=sendrecv
 				if (localStream) {
-					pc.getTransceivers().forEach(t => {
+					pc.getTransceivers().forEach((t, i) => {
+						console.log(`RTC: Transceiver[${i}] before answer:`, {
+							mid: t.mid,
+							direction: t.direction,
+							currentDirection: t.currentDirection,
+							hasSenderTrack: !!t.sender.track,
+						})
 						if (t.sender.track && t.direction !== 'sendrecv') {
 							t.direction = 'sendrecv'
+							console.log(
+								`RTC: Forced Transceiver[${i}] to sendrecv`
+							)
 						}
 					})
 				}
 
 				const ans = await pc.createAnswer()
 				await pc.setLocalDescription(ans)
-				console.log(
-					'RTC: Created and set local answer',
-					ans.sdp?.substring(0, 50) + '...'
-				)
+				console.log('RTC: Created and set local answer', {
+					sdpHeader: ans.sdp?.substring(0, 100),
+					hasSendRecv: ans.sdp?.includes('a=sendrecv'),
+					hasRecvOnly: ans.sdp?.includes('a=recvonly'),
+					hasSendOnly: ans.sdp?.includes('a=sendonly'),
+				})
 				signaler.send({
 					type: 'rtc:answer',
 					payload: ans,
@@ -839,10 +852,12 @@ export function createRTC(
 			}
 		}
 		if (msg.type === 'rtc:answer') {
-			console.log(
-				'RTC: received answer',
-				msg.payload?.sdp?.substring(0, 50) + '...'
-			)
+			console.log('RTC: received answer', {
+				sdpHeader: msg.payload?.sdp?.substring(0, 100),
+				hasSendRecv: msg.payload?.sdp?.includes('a=sendrecv'),
+				hasRecvOnly: msg.payload?.sdp?.includes('a=recvonly'),
+				hasSendOnly: msg.payload?.sdp?.includes('a=sendonly'),
+			})
 			try {
 				await pc.setRemoteDescription(
 					new RTCSessionDescription(msg.payload)
