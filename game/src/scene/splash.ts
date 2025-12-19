@@ -117,7 +117,7 @@ export async function createSplashScene(w: number, h: number) {
 			const texW = sprite.texture.width || 1
 			const texH = sprite.texture.height || 1
 			const scale = Math.max(w / texW, h / texH)
-			sprite.scale.set(scale * 1.35)
+			sprite.scale.set(scale * 1.6)
 			content.addChild(sprite)
 			void prefetchBGM()
 			setTimeout(async () => {

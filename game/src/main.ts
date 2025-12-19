@@ -480,7 +480,8 @@ async function playQuickSplashes(
 		sprite.y = Math.round(h / 2)
 
 		// Small logo sizing
-		const maxDim = 180
+		const isIG5 = n.includes('ig5')
+		const maxDim = isIG5 ? 320 : 180
 		const s = Math.min(1, maxDim / Math.max(tex.width, tex.height))
 		sprite.scale.set(s)
 
