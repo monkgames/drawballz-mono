@@ -112,6 +112,7 @@ export async function prefetchBGM() {
 
 export async function startBGMOnce() {
 	if (started) return
+	if (isMuted()) return
 	const ac = ensureAudioCtx()
 	if (!ac) return
 	try {

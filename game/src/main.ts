@@ -6,6 +6,7 @@ import {
 	Text,
 	Texture,
 	Assets,
+	BlurFilter,
 } from 'pixi.js'
 import { SocketClient } from '@/net/socket'
 import { isMobileDevice, isSlowNetwork } from './util/env'
@@ -63,13 +64,13 @@ async function resolveServerBase(): Promise<string> {
 		if (r.ok) return origin
 	} catch (_) {}
 	const host = window.location.hostname || 'localhost'
-	const scheme = 'http'
+	const scheme = window.location.protocol.replace(':', '') || 'http'
 	const base3001 = `${scheme}://${host}:3001`
 	try {
 		const r = await fetch(`${base3001}/health`, { method: 'GET' })
 		if (r.ok) return base3001
 	} catch (_) {}
-	return `http://localhost:3001`
+	return `${scheme}://${host}:3001`
 }
 let debugState: {
 	playerId?: 'A' | 'B' | null
@@ -82,11 +83,14 @@ let debugState: {
 } = {}
 let hud: Container | null = null
 let hudPanel: Graphics | null = null
-let hudText: Text | null = null
+let hudNameText: Text | null = null
+let hudBalanceText: Text | null = null
+let hudIcon: Container | null = null
 let walletUSD: number = 0
-let dbg: Container | null = null
-let dbgPanel: Graphics | null = null
-let dbgText: Text | null = null
+
+let debugPanel: Container | null = null
+let debugBg: Graphics | null = null
+let debugText: Text | null = null
 
 let matchPhase:
 	| 'idle'
@@ -185,6 +189,7 @@ async function loadScene(name: 'home', w: number, h: number) {
 }
 async function loadSplashTexture(name: string): Promise<Texture | null> {
 	const candidates = [
+		`/assets/ui/${name}.webp`,
 		`/assets/bg/${name}.png`,
 		`/bg/${name}.png`,
 		`/assets/bg/${name}.webp`,
@@ -216,29 +221,63 @@ function formatUSD(n: number) {
 function createHUD(w: number, h: number) {
 	if (!hud) hud = new Container()
 	if (!hudPanel) hudPanel = new Graphics()
-	if (!hudText)
-		hudText = new Text({
+
+	if (!hudNameText) {
+		hudNameText = new Text({
 			text: '',
-			style: { fontFamily: 'system-ui', fontSize: 14, fill: 0xe6f7ff },
+			style: {
+				fontFamily: 'system-ui',
+				fontSize: 13,
+				fill: 0xffffff,
+				fontWeight: 'bold',
+				letterSpacing: 0.5,
+			},
 		})
+	}
+	if (!hudBalanceText) {
+		hudBalanceText = new Text({
+			text: '',
+			style: {
+				fontFamily: 'system-ui',
+				fontSize: 13,
+				fill: 0x98ffb3,
+				fontWeight: 'bold',
+			},
+		})
+	}
+	if (!hudIcon) {
+		hudIcon = new Container()
+		const coin = new Graphics()
+		coin.circle(0, 0, 9)
+		coin.fill({ color: 0xffd700 })
+		coin.stroke({ color: 0xffaa00, width: 1.5 })
+		const sym = new Text({
+			text: '$',
+			style: {
+				fontFamily: 'system-ui',
+				fontSize: 11,
+				fontWeight: 'bold',
+				fill: 0x000000,
+			},
+		})
+		sym.anchor.set(0.5)
+		coin.addChild(sym)
+		hudIcon.addChild(coin)
+	}
+
 	hud.removeChildren()
 	hudPanel.clear()
-	hudPanel.roundRect(0, 0, 220, 40, 10)
-	hudPanel.fill({ color: 0x0a0f12, alpha: 0.85 })
-	hudPanel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.6 })
+
 	hud.addChild(hudPanel)
-	hudText.anchor = 0.5
-	hudText.x = 110
-	hudText.y = 20
-	hud.addChild(hudText)
+	hud.addChild(hudNameText)
+	hud.addChild(hudIcon)
+	hud.addChild(hudBalanceText)
+
 	updateHUD()
-	const margin = 12
-	hud.x = Math.round(w - 220 - margin)
-	hud.y = Math.round(h - 40 - margin)
+
 	if (!app.stage.children.includes(hud)) {
 		app.stage.addChild(hud)
 	} else {
-		// ensure HUD is topmost
 		try {
 			app.stage.removeChild(hud)
 		} catch (_) {}
@@ -247,100 +286,125 @@ function createHUD(w: number, h: number) {
 }
 
 function updateHUD() {
-	if (!hudText) return
-	const name = displayName || 'Player'
+	if (!hudNameText || !hudBalanceText || !hudIcon || !hudPanel || !hud) return
+	const name = displayName || 'PLAYER'
 	const bal = formatUSD(walletUSD)
-	hudText.text = `${name} • ${bal}`
+
+	const maxLen = 12
+	hudNameText.text =
+		name.length > maxLen
+			? name.substring(0, maxLen) + '…'
+			: name.toUpperCase()
+	hudBalanceText.text = bal
+
+	// Layout
+	const paddingX = 12
+	const iconGap = 4
+	const textGap = 12
+	const sepW = 1
+	const sepGap = 12
+
+	// Measure widths
+	const nameW = hudNameText.width
+	const balW = hudBalanceText.width
+	const iconW = 16 // Compact icon
+
+	const totalW =
+		paddingX * 2 + nameW + sepGap * 2 + sepW + iconW + iconGap + balW
+	const totalH = 30
+
+	// Draw background (Sleek pill)
+	hudPanel.clear()
+	hudPanel.roundRect(0, 0, totalW, totalH, 15)
+	hudPanel.fill({ color: 0x000000, alpha: 0.75 })
+	hudPanel.stroke({ color: 0xffffff, width: 1, alpha: 0.1 })
+
+	// Separator
+	const sepX = paddingX + nameW + sepGap
+	hudPanel.moveTo(sepX, 8)
+	hudPanel.lineTo(sepX, totalH - 8)
+	hudPanel.stroke({ color: 0xffffff, width: 1, alpha: 0.2 })
+
+	// Position items
+	let cx = paddingX
+
+	// Name
+	hudNameText.anchor.set(0, 0.5)
+	hudNameText.x = cx
+	hudNameText.y = totalH / 2 + 1 // Optical center
+	cx += nameW + sepGap * 2 + sepW
+
+	// Icon
+	hudIcon.scale.set(0.85) // Scale down 18px -> ~15px
+	hudIcon.x = cx + 8 // Radius approx
+	hudIcon.y = totalH / 2
+	cx += 16 + iconGap
+
+	// Balance
+	hudBalanceText.anchor.set(0, 0.5)
+	hudBalanceText.x = cx
+	hudBalanceText.y = totalH / 2 + 1
+
+	// Position HUD at Top Right
+	const margin = 20
+	const canvasW = app.renderer.width
+	hud.x = canvasW - totalW - margin
+	hud.y = margin
 }
 
 function createDebugPanel(w: number, h: number) {
-	if (!dbg) dbg = new Container()
-	if (!dbgPanel) dbgPanel = new Graphics()
-	if (!dbgText)
-		dbgText = new Text({
-			text: '',
-			style: { fontFamily: 'system-ui', fontSize: 13, fill: 0xe6f7ff },
+	if (!debugPanel) debugPanel = new Container()
+	if (!debugBg) debugBg = new Graphics()
+	if (!debugText) {
+		debugText = new Text({
+			text: 'Debug: Idle',
+			style: {
+				fontFamily: 'monospace',
+				fontSize: 10,
+				fill: 0x00ff00,
+				align: 'left',
+			},
 		})
-	dbg.removeChildren()
-	const dbgW = 260
-	const dbgH = 120
-	dbgPanel.clear()
-	dbgPanel.roundRect(0, 0, dbgW, dbgH, 12)
-	dbgPanel.fill({ color: 0x0a0f12, alpha: 0.88 })
-	dbgPanel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.6 })
-
-	// Create toggle button
-	const toggleBtn = new Graphics()
-	const toggleW = 80
-	const toggleH = 32
-	toggleBtn.roundRect(0, 0, toggleW, toggleH, 8)
-	toggleBtn.fill({ color: 0x0a0f12, alpha: 0.8 })
-	toggleBtn.stroke({ color: 0x98ffb3, width: 1, alpha: 0.6 })
-	toggleBtn.eventMode = 'static'
-	toggleBtn.cursor = 'pointer'
-
-	const toggleLabel = new Text({
-		text: 'Debug',
-		style: { fontFamily: 'system-ui', fontSize: 12, fill: 0x98ffb3 },
-	})
-	toggleLabel.anchor = 0.5
-	toggleLabel.x = toggleW / 2
-	toggleLabel.y = toggleH / 2
-	toggleBtn.addChild(toggleLabel)
-
-	// Positioning
-	// Toggle button at bottom-left
-	toggleBtn.x = 0
-	toggleBtn.y = dbgH + 8
-
-	// Panel above it
-	dbgPanel.x = 0
-	dbgPanel.y = 0
-	dbgText.x = 12
-	dbgText.y = 10
-
-	dbg.addChild(dbgPanel)
-	dbg.addChild(dbgText)
-	dbg.addChild(toggleBtn)
-
-	// Interaction
-	const setVisible = (v: boolean) => {
-		dbgPanel!.visible = v
-		dbgText!.visible = v
-		toggleLabel.text = v ? 'Hide' : 'Debug'
 	}
 
-	toggleBtn.on('pointertap', () => {
-		setVisible(!dbgPanel!.visible)
-	})
+	debugPanel.removeChildren()
+	debugBg.clear()
+	debugBg.rect(0, 0, 200, 120)
+	debugBg.fill({ color: 0x000000, alpha: 0.8 })
+	debugBg.stroke({ color: 0xff0000, width: 2 })
 
-	// Default collapsed
-	setVisible(false)
+	debugPanel.addChild(debugBg)
+	debugPanel.addChild(debugText)
+	debugText.x = 5
+	debugText.y = 5
 
-	// Container position (bottom-left)
-	dbg.x = 20
-	dbg.y = Math.round(h - dbgH - 20 - toggleH - 8)
+	// Position bottom-left
+	debugPanel.x = 10
+	debugPanel.y = h - 130
 
-	if (!app.stage.children.includes(dbg)) {
-		app.stage.addChild(dbg)
+	if (!app.stage.children.includes(debugPanel)) {
+		app.stage.addChild(debugPanel)
 	} else {
 		try {
-			app.stage.removeChild(dbg)
+			app.stage.removeChild(debugPanel)
 		} catch (_) {}
-		app.stage.addChild(dbg)
+		app.stage.addChild(debugPanel)
 	}
+	updateDebugPanel(debugState)
 }
 
 function updateDebugPanel(s: any) {
-	if (!dbgText) return
-	const lines = [
-		`Room: ${s?.roomId || '-'}`,
-		`Me: ${s?.displayName || '-'} (${s?.playerId || '-'})`,
-		`Opponent: ${s?.opponentName || '-'}`,
-		`Ready A:${s?.A ? 'Y' : 'N'} B:${s?.B ? 'Y' : 'N'}`,
-		`Phase: ${s?.phase || '-'}`,
-	]
-	dbgText.text = lines.join('\n')
+	if (!debugText || !debugPanel) return
+	const lines = []
+	lines.push(`Phase: ${s.phase || 'idle'}`)
+	if (s.playerId) lines.push(`Player: ${s.playerId}`)
+	if (s.roomId) lines.push(`Room: ${s.roomId}`)
+	if (s.displayName) lines.push(`Name: ${s.displayName}`)
+	if (s.opponentName) lines.push(`Opponent: ${s.opponentName}`)
+	if (s.A !== undefined) lines.push(`Ready A: ${s.A}`)
+	if (s.B !== undefined) lines.push(`Ready B: ${s.B}`)
+
+	debugText.text = lines.join('\n')
 }
 async function playQuickSplashes(
 	w: number,
@@ -350,10 +414,62 @@ async function playQuickSplashes(
 	const root = new Container()
 	const bg = new Graphics()
 	bg.rect(0, 0, w, h)
-	bg.fill({ color: 0x0e0e12 })
+	bg.fill({ color: 0x000000 })
 	root.addChild(bg)
 	app.stage.addChild(root)
-	const names = ['splash_mg', 'splash_ig5']
+	// Ensure debug panel is on top of splash
+	if (debugPanel) {
+		app.stage.addChild(debugPanel)
+	}
+
+	// Progress Bar & Loading Text
+	const barW = Math.min(w * 0.4, 240)
+	const barH = 4
+	const barX = (w - barW) / 2
+	const barY = h * 0.85
+
+	const barBg = new Graphics()
+	barBg.rect(0, 0, barW, barH)
+	barBg.fill({ color: 0x333333 })
+	barBg.x = barX
+	barBg.y = barY
+	root.addChild(barBg)
+
+	const barFill = new Graphics()
+	barFill.rect(0, 0, barW, barH)
+	barFill.fill({ color: 0x98ffb3 })
+	barFill.x = barX
+	barFill.y = barY
+	barFill.scale.x = 0
+	root.addChild(barFill)
+
+	const loadText = new Text({
+		text: 'Loading assets...',
+		style: {
+			fontFamily: 'system-ui',
+			fontSize: 11,
+			fill: 0x666666,
+			fontWeight: 'bold',
+			letterSpacing: 0.5,
+		},
+	})
+	loadText.anchor.set(0.5, 0)
+	loadText.x = w / 2
+	loadText.y = barY + 10
+	root.addChild(loadText)
+
+	const { gsap } = await import('gsap')
+	const progressObj = { val: 0 }
+	const progressTween = gsap.to(progressObj, {
+		val: 0.9,
+		duration: 2.5,
+		ease: 'power1.out',
+		onUpdate: () => {
+			barFill.scale.x = progressObj.val
+		},
+	})
+
+	const names = ['mg_brand', 'ig5_brand']
 	for (let i = 0; i < names.length; i++) {
 		const n = names[i]
 		const tex = await loadSplashTexture(n)
@@ -362,33 +478,48 @@ async function playQuickSplashes(
 		sprite.anchor = 0.5
 		sprite.x = Math.round(w / 2)
 		sprite.y = Math.round(h / 2)
-		const s = Math.max(w / tex.width, h / tex.height)
+
+		// Small logo sizing
+		const maxDim = 180
+		const s = Math.min(1, maxDim / Math.max(tex.width, tex.height))
 		sprite.scale.set(s)
+
 		sprite.alpha = 0
 		root.addChild(sprite)
-		const { gsap } = await import('gsap')
-		await new Promise<void>(resolve =>
+
+		// Fade In
+		await new Promise<void>(resolve => {
 			gsap.to(sprite, {
 				alpha: 1,
-				duration: 0.3,
+				duration: 0.5,
 				ease: 'power1.out',
 				onComplete: resolve,
 			})
-		)
-		await new Promise<void>(resolve => setTimeout(resolve, 700))
+		})
+
+		// Hold
+		await new Promise<void>(resolve => setTimeout(resolve, 5000))
+
+		// If this is the last logo, ensure game is ready
 		if (i === names.length - 1 && ready) {
 			try {
+				loadText.text = 'Finalizing...'
 				await ready
+				progressTween.kill()
+				gsap.to(barFill.scale, { x: 1, duration: 0.2 })
+				loadText.text = 'Ready'
 			} catch (_) {}
 		}
-		await new Promise<void>(resolve =>
+
+		// Fade Out
+		await new Promise<void>(resolve => {
 			gsap.to(sprite, {
 				alpha: 0,
-				duration: 0.25,
+				duration: 0.5,
 				ease: 'power1.in',
 				onComplete: resolve,
 			})
-		)
+		})
 		root.removeChild(sprite)
 	}
 	try {
@@ -734,6 +865,8 @@ async function layout() {
 											A: liveA || null,
 											B: liveB || null,
 										},
+										selfBalls,
+										oppBalls,
 									})
 								} catch (_) {}
 								// No fallback fetch; use authoritative payload only
@@ -1172,6 +1305,8 @@ async function layout() {
 						map
 					)
 				} catch (_) {}
+				const existingNum = Number(map[color]) || 0
+				const initialNumberIndex = existingNum > 0 ? existingNum - 1 : 0
 				const scene = await createConfiguratorScene(
 					canvasW,
 					canvasH,
@@ -1179,7 +1314,8 @@ async function layout() {
 					(playerId || 'A') as any,
 					configuredColors as any,
 					Number(index) || 0,
-					color as any
+					color as any,
+					initialNumberIndex
 				)
 				{
 					const betEl = document.getElementById(
@@ -1394,7 +1530,7 @@ async function boot() {
 			'/assets/sprites/balls/pink.svg',
 			'/assets/sprites/balls/orange.svg',
 			'/assets/sprites/balls/yellow.svg',
-			'/assets/sprites/balls/blue.svg',
+			'/assets/sprites/balls/blue.webp',
 			'/assets/sprites/trails/green.svg',
 			'/assets/sprites/trails/pink.svg',
 			'/assets/sprites/trails/orange.svg',

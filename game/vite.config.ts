@@ -7,23 +7,23 @@ export default defineConfig({
 		host: true,
 		proxy: {
 			'/simulate': {
-				target: 'http://localhost:3002',
+				target: 'http://localhost:3001',
 				changeOrigin: true,
 			},
 			'/player': {
-				target: 'http://localhost:3002',
+				target: 'http://localhost:3001',
 				changeOrigin: true,
 			},
 			'/ws': {
-				target: 'ws://localhost:3002',
+				target: 'ws://localhost:3001',
 				ws: true,
 			},
 			'/health': {
-				target: 'http://localhost:3002',
+				target: 'http://localhost:3001',
 				changeOrigin: true,
 			},
 			'/prize': {
-				target: 'http://localhost:3002',
+				target: 'http://localhost:3001',
 				changeOrigin: true,
 			},
 		},

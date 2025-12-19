@@ -7,14 +7,32 @@ const TRAIL_CENTER_Y_OFFSET: Record<BallColor, number> = {
 	pink: 0,
 	orange: 0,
 	yellow: -2,
-	blue: 0,
+	blue: -25,
+}
+
+const BALL_SCALE_CORRECTION: Record<BallColor, number> = {
+	green: 1,
+	pink: 1,
+	orange: 1,
+	yellow: 1,
+	blue: 1,
+}
+
+const STANDARD_BALL_SIZE = 500
+
+function getResolutionSuffix(): string {
+	const dpr = window.devicePixelRatio || 1
+	if (dpr >= 3.5) return '4x'
+	if (dpr >= 2.5) return '3x'
+	if (dpr >= 1.5) return '2x'
+	return '1x'
 }
 
 async function loadTexture(basePath: string): Promise<Texture | null> {
 	const candidates = [
+		`${basePath}.webp`,
 		`${basePath}.svg`,
 		`${basePath}.png`,
-		`${basePath}.webp`,
 	]
 	for (const url of candidates) {
 		try {
@@ -25,11 +43,13 @@ async function loadTexture(basePath: string): Promise<Texture | null> {
 	return null
 }
 
-async function loadTrimmedTexture(basePath: string): Promise<Texture | null> {
+export async function loadTrimmedTexture(
+	basePath: string
+): Promise<Texture | null> {
 	const candidates = [
+		`${basePath}.webp`,
 		`${basePath}.svg`,
 		`${basePath}.png`,
-		`${basePath}.webp`,
 	]
 	for (const url of candidates) {
 		try {
@@ -89,9 +109,9 @@ async function loadTrimmedCanvas(
 	basePath: string
 ): Promise<HTMLCanvasElement | null> {
 	const candidates = [
+		`${basePath}.webp`,
 		`${basePath}.svg`,
 		`${basePath}.png`,
-		`${basePath}.webp`,
 	]
 	for (const url of candidates) {
 		try {
@@ -307,12 +327,19 @@ async function ensurePackedAtlas(): Promise<AtlasTextures | null> {
 	return packedAtlasPromise
 }
 
-export async function createBall(color: BallColor, opts?: { noFX?: boolean }) {
+export async function createBall(
+	color: BallColor,
+	opts?: { noFX?: boolean; gap?: number }
+) {
 	const container = new Container()
 	const packed = await ensurePackedAtlas()
 	const atlas = packed || (await ensureBallsAtlas())
+	const suffix = getResolutionSuffix()
 	const ballTex =
 		atlas[`ball/${color}`] ||
+		(await loadTexture(
+			`/assets/sprites/balls/${color}/${color}_${suffix}`
+		)) ||
 		(await loadTrimmedTexture(`/assets/sprites/balls/${color}`)) ||
 		(await loadTexture(`/assets/sprites/balls/${color}`))
 	const trailTex = opts?.noFX
@@ -325,6 +352,9 @@ export async function createBall(color: BallColor, opts?: { noFX?: boolean }) {
 		const trail = new Sprite({ texture: trailTex })
 		trail.anchor = 0.5
 		trail.roundPixels = true
+		// Counter-scale the trail so it doesn't get affected by the container's scale correction
+		const correction = BALL_SCALE_CORRECTION[color] || 1
+		trail.scale.set(correction)
 		container.addChild(trail)
 		;(container as any).userData = { trail }
 	}
@@ -333,11 +363,17 @@ export async function createBall(color: BallColor, opts?: { noFX?: boolean }) {
 		const ball = new Sprite({ texture: ballTex })
 		ball.anchor = 0.5
 		ball.roundPixels = true
+
+		// Normalize Ball Size
+		const correction = BALL_SCALE_CORRECTION[color] || 1
+		const baseScale = (STANDARD_BALL_SIZE / ballTex.width) * correction
+		ball.scale.set(baseScale)
+
 		container.addChild(ball)
 		const trail = container.children[0] as Sprite | undefined
 		if (trail) {
-			const desiredGap = 40
-			const bH = ballTex.height || 300
+			const desiredGap = opts?.gap ?? 10
+			const bH = (ballTex.height || 300) * baseScale
 			const tH = trailTex?.height || 0
 			const offset = Math.round(desiredGap + bH * 0.5 + tH * 0.5)
 			const centerAdj = TRAIL_CENTER_Y_OFFSET[color] || 0
@@ -345,19 +381,146 @@ export async function createBall(color: BallColor, opts?: { noFX?: boolean }) {
 			const trailBottomOffset =
 				trail.y + ((trailTex?.height as number) || 0) * 0.5
 			;(container as any).userData = {
-				baseWidth: ballTex.width || 0,
+				baseWidth: (ballTex.width || 0) * baseScale,
 				trailBottomOffset,
 				ball,
 				trail,
 			}
 		} else {
 			;(container as any).userData = {
-				baseWidth: ballTex.width || 0,
-				trailBottomOffset: (ballTex.height || 0) * 0.5,
+				baseWidth: (ballTex.width || 0) * baseScale,
+				trailBottomOffset: (ballTex.height || 0) * baseScale * 0.5,
 				ball,
 			}
 		}
 	}
 
 	return container
+}
+
+// --- DISPLAY PREFAB LOGIC ---
+
+const displayTextures: Record<string, Texture> = {}
+let displayTexturesPromise: Promise<void> | null = null
+
+export async function loadBallDisplayTextures() {
+	if (Object.keys(displayTextures).length > 0) return
+	if (displayTexturesPromise) return displayTexturesPromise
+	displayTexturesPromise = (async () => {
+		const keys = ['00', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'face']
+		for (const k of keys) {
+			try {
+				const tex = await loadTrimmedTexture(
+					`/assets/sprites/displays/${k}`
+				)
+				if (tex) displayTextures[k] = tex
+			} catch (_) {}
+		}
+	})()
+	return displayTexturesPromise
+}
+
+export const MASTER_BALL_CONFIG = {
+	displayOffset: { x: 77, y: -33 },
+	displayScale: 0.59,
+	ballOffset: { x: 0, y: 0 },
+}
+
+export async function addDisplayToBall(
+	ballContainer: Container,
+	initialValue: string | number = 'face',
+	config: Partial<typeof MASTER_BALL_CONFIG> = {}
+) {
+	await loadBallDisplayTextures()
+
+	const cfg = { ...MASTER_BALL_CONFIG, ...config }
+
+	// Find the ball sprite
+	const trailSprite = (ballContainer as any).userData?.trail
+	const ballSprite =
+		((ballContainer as any).userData?.ball as Sprite) ||
+		(ballContainer.children.find(
+			c => c instanceof Sprite && c !== trailSprite
+		) as Sprite) ||
+		(ballContainer.children[0] as Sprite)
+
+	if (!ballSprite) return
+
+	const ballSize = ballSprite.width || 100
+
+	// Create or reuse display container
+	let displayContainer = (ballContainer as any).displayContainer as Container
+	if (!displayContainer) {
+		displayContainer = new Container()
+		ballContainer.addChild(displayContainer)
+		;(ballContainer as any).displayContainer = displayContainer
+	}
+
+	// Plate Container (for the number/face)
+	let plateContainer = (displayContainer as any).plateContainer as Container
+	if (!plateContainer) {
+		plateContainer = new Container()
+		displayContainer.addChild(plateContainer)
+		;(displayContainer as any).plateContainer = plateContainer
+	}
+
+	// Set Offset from config
+	plateContainer.position.set(cfg.displayOffset.x, cfg.displayOffset.y)
+
+	const setPlate = (texture: Texture) => {
+		plateContainer.removeChildren()
+		const s = new Sprite(texture)
+		s.anchor.set(0.5)
+
+		// Scale logic: Fit to configured % of ball size
+		const targetSize = ballSize * cfg.displayScale
+		const scale = targetSize / Math.max(s.width, s.height)
+		s.scale.set(scale)
+		plateContainer.addChild(s)
+	}
+
+	const updateNumber = (val: string | number) => {
+		const key = String(val)
+		if (displayTextures[key]) {
+			setPlate(displayTextures[key])
+		} else if (displayTextures['face']) {
+			setPlate(displayTextures['face'])
+		}
+	}
+
+	// Attach update function to container for external use
+	;(ballContainer as any).updateNumber = updateNumber
+
+	// Set initial value
+	updateNumber(initialValue)
+
+	return {
+		updateNumber,
+		displayContainer,
+	}
+}
+
+export async function createMasterBall(
+	color: BallColor,
+	initialValue: string | number = 'face',
+	opts: { noFX?: boolean; gap?: number } = {},
+	config: Partial<typeof MASTER_BALL_CONFIG> = {}
+) {
+	const container = await createBall(color, opts)
+
+	// Apply Master Config to Ball Sprite
+	const cfg = { ...MASTER_BALL_CONFIG, ...config }
+
+	const ballSprite = (container as any).userData?.ball as Sprite
+	if (ballSprite) {
+		ballSprite.position.set(cfg.ballOffset.x, cfg.ballOffset.y)
+	}
+
+	const displayRes = await addDisplayToBall(container, initialValue, cfg)
+
+	return {
+		container,
+		updateNumber: displayRes?.updateNumber,
+		displayContainer: displayRes?.displayContainer,
+	}
 }

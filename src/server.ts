@@ -1,5 +1,6 @@
 import express from 'express'
 import http from 'http'
+import https from 'https'
 import path from 'path'
 import fs from 'fs'
 import { evaluateBatch, evaluateBatchCompact, evaluateMatch } from './engine'
@@ -93,6 +94,9 @@ const players: Record<string, PlayerConfig> = {
 	A: { id: 'A', balls: [], betAmount: 1 },
 	B: { id: 'B', balls: [], betAmount: 1 },
 }
+
+const server = http.createServer(app)
+const isHttps = false
 const playerSlotsOrder: Record<string, Color[]> = {
 	A: [1, 2, 3, 4, 5],
 	B: [1, 2, 3, 4, 5],
@@ -258,7 +262,8 @@ app.post('/players/reset', (_req, res) => {
 	}
 })
 
-const server = http.createServer(app)
+// Server initialized earlier to support HTTPS
+// const server = http.createServer(app)
 
 let currentRound: {
 	id: string
@@ -909,7 +914,10 @@ async function boot() {
 		const port = process.env.PORT ? Number(process.env.PORT) : 3001
 		server.listen(port, () => {
 			// eslint-disable-next-line no-console
-			console.log(`Fresh server listening on http://localhost:${port}`)
+			const protocol = isHttps ? 'https' : 'http'
+			console.log(
+				`Fresh server listening on ${protocol}://localhost:${port}`
+			)
 		})
 	} catch (e) {
 		// eslint-disable-next-line no-console

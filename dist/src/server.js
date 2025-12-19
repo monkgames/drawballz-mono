@@ -117,6 +117,8 @@ const players = {
     A: { id: 'A', balls: [], betAmount: 1 },
     B: { id: 'B', balls: [], betAmount: 1 },
 };
+const server = http_1.default.createServer(app);
+const isHttps = false;
 const playerSlotsOrder = {
     A: [1, 2, 3, 4, 5],
     B: [1, 2, 3, 4, 5],
@@ -269,7 +271,8 @@ app.post('/players/reset', (_req, res) => {
         res.status(400).json({ error: String(e?.message ?? e) });
     }
 });
-const server = http_1.default.createServer(app);
+// Server initialized earlier to support HTTPS
+// const server = http.createServer(app)
 let currentRound = null;
 let currentRoundPlayers = null;
 const instanceId = Math.random().toString(36).slice(2);
@@ -874,7 +877,8 @@ async function boot() {
         const port = process.env.PORT ? Number(process.env.PORT) : 3001;
         server.listen(port, () => {
             // eslint-disable-next-line no-console
-            console.log(`Fresh server listening on http://localhost:${port}`);
+            const protocol = isHttps ? 'https' : 'http';
+            console.log(`Fresh server listening on ${protocol}://localhost:${port}`);
         });
     }
     catch (e) {

@@ -7,7 +7,7 @@ import {
 	Texture,
 	Point,
 } from 'pixi.js'
-import { createBall, BallColor } from '@/modules/ball'
+import { createBall, BallColor, createMasterBall } from '@/modules/ball'
 import { gsap } from 'gsap'
 import { playClickSound, playConfirmSound } from '@/audio/sfx'
 
@@ -36,11 +36,17 @@ export async function createConfiguratorScene(
 	playerId: 'A' | 'B',
 	usedColors: BallColor[] = ['green', 'pink', 'orange', 'yellow', 'blue'],
 	slotIndex: number = 0,
-	originalColor?: BallColor
+	originalColor?: BallColor,
+	initialNumberIndex: number = 0
 ) {
 	const root = new Container()
 	const content = new Container()
 	root.addChild(content)
+
+	// Configured Range: 00, 0-9
+	const numbers: (string | number)[] = ['00', 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+	let selectedIndex = initialNumberIndex
+	let currentColor = color
 
 	// Containers for layering
 	const bgContainer = new Container()
@@ -61,502 +67,508 @@ export async function createConfiguratorScene(
 		if (bgTex) {
 			const sprite = new Sprite({ texture: bgTex })
 			sprite.anchor = 0.5
-			sprite.x = Math.round(w / 2)
-			sprite.y = Math.round(h / 2)
+			sprite.x = w / 2
+			sprite.y = h / 2
 			const s = Math.max(w / bgTex.width, h / bgTex.height)
 			sprite.scale.set(s)
 			bgContainer.addChild(sprite)
-			// Optional: fade in or just cover the placeholder
 			sprite.alpha = 0
 			gsap.to(sprite, { alpha: 1, duration: 0.3 })
 		}
 	})
 
-	// Async Center Ball Load
-	createBall(color).then(center => {
-		center.scale.set(0.45)
-		center.x = Math.round(w / 2)
-		center.y = Math.round(h / 2)
-		centerContainer.addChild(center)
-		gsap.to(center, {
-			rotation: 0.02,
-			yoyo: true,
-			repeat: -1,
-			duration: 4.0,
-			ease: 'sine.inOut',
+	// --- CENTER BALL ---
+	const initialVal = (numbers as any)?.[selectedIndex] || '00'
+
+	createMasterBall(currentColor, initialVal, { noFX: true }).then(
+		async ({ container: center, updateNumber }) => {
+			center.scale.set(0.45)
+			center.x = w / 2
+			center.y = h / 2
+			centerContainer.addChild(center)
+
+			// Idle animation
+			gsap.to(center, {
+				rotation: 0.02,
+				yoyo: true,
+				repeat: -1,
+				duration: 4.0,
+				ease: 'sine.inOut',
+			})
+			gsap.to(center.scale, {
+				x: center.scale.x * 1.03,
+				y: center.scale.y * 1.03,
+				yoyo: true,
+				repeat: -1,
+				duration: 3.2,
+				ease: 'sine.inOut',
+			})
+
+			if (updateNumber) {
+				;(centerContainer as any).updateNumber = updateNumber
+			}
+		}
+	)
+
+	// Update Color Logic
+	;(root as any).updateColor = async (newColor: BallColor) => {
+		const centerC = content.children[1] as Container
+		if (!centerC || centerC.children.length === 0) return
+
+		const ballContainer = centerC.children[0] as Container
+
+		// Load new assets
+		const tempBall = await createBall(newColor, { noFX: true })
+		const tempTrail = (tempBall as any).userData?.trail as
+			| Sprite
+			| undefined
+		const tempBallSprite = (tempBall.children.find(
+			c => c instanceof Sprite && c !== tempTrail
+		) || tempBall.children[0]) as Sprite
+
+		// Update existing sprites
+		const existingTrail = (ballContainer as any).userData?.trail as
+			| Sprite
+			| undefined
+		const existingBall = (ballContainer.children.find(
+			c => c instanceof Sprite && c !== existingTrail
+		) || ballContainer.children[0]) as Sprite
+
+		if (existingBall && tempBallSprite) {
+			existingBall.texture = tempBallSprite.texture
+			existingBall.scale.copyFrom(tempBallSprite.scale)
+		}
+
+		if (existingTrail && tempTrail) {
+			existingTrail.texture = tempTrail.texture
+		}
+
+		currentColor = newColor
+		renderUI()
+	}
+
+	// --- NEW UI IMPLEMENTATION ---
+
+	// State
+	let activeTab: 'color' | 'number' = 'color'
+
+	// Left Tabs Container
+	const leftPanel = new Container()
+	leftPanel.x = Math.round(w * 0.15)
+	leftPanel.y = Math.round(h * 0.5)
+	uiContainer.addChild(leftPanel)
+
+	// Right Content Container
+	const rightPanel = new Container()
+	rightPanel.x = Math.round(w * 0.85)
+	rightPanel.y = Math.round(h * 0.5)
+	uiContainer.addChild(rightPanel)
+
+	// Helper: Create Tab Button
+	const createTabBtn = (
+		label: string,
+		mode: 'color' | 'number',
+		yPos: number
+	) => {
+		const btn = new Container()
+		btn.y = yPos
+
+		const bg = new Graphics()
+		btn.addChild(bg)
+
+		const text = new Text({
+			text: label,
+			style: {
+				fontFamily: 'system-ui',
+				fontSize: 18,
+				fill: 0xe6f7ff,
+				fontWeight: 'bold',
+			},
 		})
-		gsap.to(center.scale, {
-			x: center.scale.x * 1.03,
-			y: center.scale.y * 1.03,
-			yoyo: true,
-			repeat: -1,
-			duration: 3.2,
-			ease: 'sine.inOut',
+		text.anchor.set(0.5)
+		btn.addChild(text)
+
+		btn.eventMode = 'static'
+		btn.cursor = 'pointer'
+
+		btn.on('pointertap', () => {
+			if (activeTab !== mode) {
+				playClickSound(currentColor)
+				activeTab = mode
+				renderUI()
+			}
 		})
 
-		const currentCircle = new Graphics()
-		currentCircle.circle(
-			0,
-			0,
-			Math.max(center.width, center.height) * 0.064
-		)
-		currentCircle.fill({ color: 0x000000, alpha: 0.85 })
-		currentCircle.x = center.x
-		currentCircle.y = center.y
-		centerContainer.addChild(currentCircle)
+		return { btn, bg, text, mode }
+	}
 
-		const currentText = new Text({
-			text: '01',
-			style: { fontFamily: 'system-ui', fontSize: 48, fill: 0x98ffb3 },
-		})
-		currentText.anchor = 0.5
-		currentText.x = currentCircle.x
-		currentText.y = currentCircle.y
-		currentText.roundPixels = true
-		currentText.resolution = Math.min(window.devicePixelRatio || 1, 2)
-		centerContainer.addChild(currentText)
+	const tabColor = createTabBtn('COLOR', 'color', -60)
+	const tabNumber = createTabBtn('NUMBER', 'number', 60)
+	leftPanel.addChild(tabColor.btn)
+	leftPanel.addChild(tabNumber.btn)
 
-		// Update current text update logic to reference this text
-		// We need to expose currentText to renderSlots
-		// For now, we can attach it to centerContainer or pass it
-		;(centerContainer as any).currentText = currentText
-		renderSlots() // Initial render to update text
-	})
+	// Right Panel: Color Grid
+	const colorGrid = new Container()
+	rightPanel.addChild(colorGrid)
 
-	const numberLabel = new Text({
-		text: 'SELECT NUMBER',
-		style: { fontFamily: 'system-ui', fontSize: 18, fill: 0xe6f7ff },
-	})
-	numberLabel.anchor = 0.5
-	numberLabel.x = Math.round(w * 0.17)
-	numberLabel.y = Math.round(h * 0.26)
-	numberLabel.roundPixels = true
-	numberLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
-	uiContainer.addChild(numberLabel)
-	const panel = new Container()
-	panel.x = Math.round(w * 0.84)
-	panel.y = Math.round(h * 0.5)
-	uiContainer.addChild(panel)
-	const frameW = Math.round(w * 0.08)
-	const frameH = Math.round(h * 0.6)
-	const frame = new Graphics()
-	frame.roundRect(-frameW / 2, -frameH / 2, frameW, frameH, 16)
-	frame.fill({ color: 0x0a0f12, alpha: 0.8 })
-	frame.stroke({ color: 0x98ffb3, width: 2, alpha: 0.6 })
-	panel.addChild(frame)
-	const selector = new Graphics()
-	selector.roundRect(frameW / 2 + 14, -22, 12, 44, 6)
-	selector.fill({ color: 0xffd400 })
-	selector.stroke({ color: 0xffd400, width: 1 })
-	panel.addChild(selector)
-	const numbers: number[] = Array.from({ length: 99 }, (_, i) => i + 1)
-	const spacing = Math.round(frameH / 8)
-	const slotsY = [-2, -1, 0, 1, 2].map(m => m * spacing)
-	const slots: { chip: Graphics; text: Text }[] = []
-	for (let i = 0; i < slotsY.length; i++) {
-		const chip = new Graphics()
-		chip.roundRect(-frameW / 2 + 8, -20, frameW - 16, 40, 10)
-		chip.fill({ color: 0x0a0f12, alpha: i === 2 ? 0.9 : 0.75 })
-		chip.stroke({
-			color: 0x98ffb3,
-			width: i === 2 ? 3 : 2,
-			alpha: i === 2 ? 1 : 0.6,
-		})
-		chip.y = slotsY[i]
-		chip.eventMode = 'static'
-		chip.cursor = 'pointer'
-		const t = new Text({
+	// Helper: Hex colors for UI
+	const BALL_COLORS_HEX: Record<BallColor, number> = {
+		green: 0x98ffb3,
+		pink: 0xff98e3,
+		orange: 0xffb366,
+		yellow: 0xffeb3b,
+		blue: 0x66b3ff,
+	}
+
+	const colors = ['green', 'pink', 'orange', 'yellow', 'blue'] as const
+	const colorItems: {
+		container: Container
+		bg: Graphics
+		ball: Container
+		key: BallColor
+	}[] = []
+
+	// Initialize Color Grid
+	const gridBg = new Graphics()
+	gridBg.roundRect(-100, -200, 200, 400, 20)
+	gridBg.fill({ color: 0x0a0f12, alpha: 0.85 })
+	gridBg.stroke({ color: 0x98ffb3, width: 2, alpha: 0.5 })
+	colorGrid.addChild(gridBg)
+
+	const initColorGrid = async () => {
+		const startY = -140
+		const gapY = 70
+
+		for (let i = 0; i < colors.length; i++) {
+			const k = colors[i]
+			const item = new Container()
+			item.y = startY + i * gapY
+
+			const bg = new Graphics()
+			// Visual button background
+			bg.roundRect(-80, -30, 160, 60, 30)
+			// Initial state (will be updated in renderUI)
+			bg.fill({ color: BALL_COLORS_HEX[k], alpha: 0.1 })
+			bg.stroke({ color: BALL_COLORS_HEX[k], width: 2, alpha: 0.5 })
+			item.addChild(bg)
+
+			// Preview Ball
+			const preview = await createBall(k, { noFX: true })
+			preview.scale.set(0.08) // Reduced scale
+			preview.x = 0
+			preview.y = 0
+			// Add shadow to make ball pop
+			const shadow = new Graphics()
+			shadow.ellipse(0, 15, 20, 8)
+			shadow.fill({ color: 0x000000, alpha: 0.3 })
+			item.addChildAt(shadow, 1) // Add shadow before ball
+			item.addChild(preview)
+
+			item.eventMode = 'static'
+			item.cursor = 'pointer'
+			item.on('pointertap', () => {
+				const currentUsed = usedColors.filter(
+					c => c !== (originalColor || color)
+				)
+				if (currentUsed.includes(k) && k !== currentColor) {
+					// Disabled feedback
+					playClickSound(currentColor) // Error sound?
+					return
+				}
+				playClickSound(k)
+				if ((root as any).updateColor) {
+					;(root as any).updateColor(k)
+				}
+			})
+
+			colorGrid.addChild(item)
+			colorItems.push({ container: item, bg, ball: preview, key: k })
+		}
+		renderUI()
+	}
+	initColorGrid()
+
+	// Right Panel: Number Picker
+	const numberPicker = new Container()
+	rightPanel.addChild(numberPicker)
+	numberPicker.visible = false
+
+	const pickerBg = new Graphics()
+	pickerBg.roundRect(-100, -200, 200, 400, 20)
+	pickerBg.fill({ color: 0x0a0f12, alpha: 0.85 })
+	pickerBg.stroke({ color: 0x98ffb3, width: 2, alpha: 0.5 })
+	numberPicker.addChild(pickerBg)
+
+	// Slot Machine Logic
+	const slotSpacing = 60
+	const visibleSlots = 5 // -2, -1, 0, 1, 2
+	const slotItems: { text: Text; bg: Graphics; offset: number }[] = []
+
+	for (let i = 0; i < visibleSlots; i++) {
+		const offset = i - 2
+		const slotC = new Container()
+		slotC.y = offset * slotSpacing
+
+		const sBg = new Graphics()
+		slotC.addChild(sBg)
+
+		const txt = new Text({
 			text: '00',
 			style: {
 				fontFamily: 'system-ui',
-				fontSize: i === 2 ? 32 : 26,
+				fontSize: 24,
 				fill: 0xe6f7ff,
+				fontWeight: 'bold',
 			},
 		})
-		t.anchor = 0.5
-		t.x = 0
-		t.y = chip.y
-		chip.on('pointertap', () => {
-			selectedIndex = clampIndex(selectedIndex - 2 + i)
-			renderSlots()
+		txt.anchor.set(0.5)
+		slotC.addChild(txt)
+
+		slotC.eventMode = 'static'
+		slotC.cursor = 'pointer'
+		slotC.on('pointertap', () => {
+			if (offset !== 0) {
+				selectedIndex = clampIndex(selectedIndex + offset)
+				playClickSound(currentColor)
+				renderUI()
+			}
 		})
-		panel.addChild(chip)
-		panel.addChild(t)
-		slots.push({ chip, text: t })
+
+		numberPicker.addChild(slotC)
+		slotItems.push({ text: txt, bg: sBg, offset })
 	}
 
-	// Removed sync center circle/text creation (moved to async block)
-	// Need to handle missing currentText in renderSlots
+	// Selection Indicator for Numbers
+	const pickerSelection = new Graphics()
+	pickerSelection.roundRect(-80, -28, 160, 56, 12)
+	pickerSelection.stroke({ color: 0xffd400, width: 2 })
+	pickerSelection.fill({ color: 0xffd400, alpha: 0.1 })
+	pickerSelection.eventMode = 'none'
+	numberPicker.addChild(pickerSelection)
 
-	// Top status header removed
-
-	// Left options (Color / Number)
-	const leftOptions = new Container()
-	leftOptions.x = Math.round(w * 0.12)
-	leftOptions.y = Math.round(h * 0.5)
-	uiContainer.addChild(leftOptions)
-	const optSpacing = 80
-	const makeOption = (label: string, idx: number) => {
-		const chip = new Graphics()
-		chip.roundRect(-70, -24, 140, 48, 12)
-		chip.fill({ color: 0x0a0f12, alpha: 0.7 })
-		chip.stroke({ color: 0x98ffb3, width: 2, alpha: 0.5 })
-		chip.y = idx * optSpacing - optSpacing
-		const t = new Text({
-			text: label,
-			style: { fontFamily: 'system-ui', fontSize: 16, fill: 0xe6f7ff },
-		})
-		t.anchor = 0.5
-		t.x = 0
-		t.y = chip.y + 24
-		chip.eventMode = 'static'
-		chip.cursor = 'pointer'
-		leftOptions.addChild(chip)
-		leftOptions.addChild(t)
-		return { chip, text: t }
-	}
-	const optColor = makeOption('SELECT COLOR', 0)
-	const optNumber = makeOption('SELECT NUMBER', 1)
-	let activeTab: 'color' | 'number' = 'color'
-	const setTab = (tab: 'color' | 'number') => {
-		activeTab = tab
-		numberLabel.visible = tab === 'number'
-		panel.visible = tab === 'number'
-		colorPanel.visible = tab === 'color'
-		optColor.chip.alpha = tab === 'color' ? 0.9 : 0.7
-		optColor.text.alpha = tab === 'color' ? 1 : 0.85
-		optNumber.chip.alpha = tab === 'number' ? 0.9 : 0.7
-		optNumber.text.alpha = tab === 'number' ? 1 : 0.85
-	}
-	optColor.chip.on('pointertap', () => setTab('color'))
-	optNumber.chip.on('pointertap', () => setTab('number'))
-	let selectedIndex = 0
-	const renderSlots = () => {
-		const base = selectedIndex - 2
-		for (let i = 0; i < slots.length; i++) {
-			const idx = Math.max(1, Math.min(99, base + i + 1)) - 1
-			const val = numbers[idx]
-			slots[i].text.text = `${String(val).padStart(2, '0')}`
-			slots[i].text.style.fontSize = i === 2 ? 28 : 24
-			slots[i].text.alpha = i === 2 ? 1 : 0.9
-			slots[i].chip.alpha = i === 2 ? 0.85 : 0.6
-			slots[i].chip.stroke({
-				color: 0x98ffb3,
-				width: i === 2 ? 3 : 2,
-				alpha: i === 2 ? 0.9 : 0.4,
-			})
-		}
-		// Safely access currentText if available
-		const ct = (centerContainer as any).currentText as Text | undefined
-		if (ct) {
-			ct.text = `${String(numbers[selectedIndex]).padStart(2, '0')}`
-		}
-	}
+	// Dragging Logic for Number Picker
 	const clampIndex = (i: number) =>
 		Math.max(0, Math.min(numbers.length - 1, i))
-	renderSlots()
-	panel.eventMode = 'static'
-	panel.cursor = 'grab'
 	let dragging = false
-	let startY = 0
-	let accum = 0
-	panel.on('pointerdown', (ev: any) => {
+	let startDragY = 0
+
+	numberPicker.eventMode = 'static'
+	numberPicker.cursor = 'grab'
+
+	numberPicker.on('pointerdown', ev => {
 		dragging = true
-		panel.cursor = 'grabbing'
-		const pt = panel.toLocal(new Point(ev.globalX, ev.globalY))
-		startY = pt.y
-		accum = 0
+		numberPicker.cursor = 'grabbing'
+		const local = numberPicker.toLocal(ev.global)
+		startDragY = local.y
 	})
-	const onMove = (ev: any) => {
+
+	const onDragMove = (ev: any) => {
 		if (!dragging) return
-		const pt = panel.toLocal(new Point(ev.globalX, ev.globalY))
-		const dy = pt.y - startY
-		const delta = Math.round(dy / spacing)
-		if (delta !== 0) {
-			startY = pt.y
-			selectedIndex = clampIndex(selectedIndex - delta)
-			renderSlots()
+		const local = numberPicker.toLocal(ev.global)
+		const dy = local.y - startDragY
+		if (Math.abs(dy) > slotSpacing) {
+			const steps = -Math.round(dy / slotSpacing)
+			if (steps !== 0) {
+				selectedIndex = clampIndex(selectedIndex + steps)
+				startDragY = local.y
+				renderUI()
+			}
 		}
 	}
-	const onUp = () => {
-		if (!dragging) return
+
+	const onDragEnd = () => {
 		dragging = false
-		panel.cursor = 'grab'
-		renderSlots()
+		numberPicker.cursor = 'grab'
 	}
-	panel.on('pointermove', onMove)
-	panel.on('pointerup', onUp)
-	panel.on('pointerupoutside', onUp)
-	const colors = ['green', 'pink', 'orange', 'yellow', 'blue'] as const
-	const colorPanel = new Container()
-	colorPanel.x = panel.x
-	colorPanel.y = panel.y
-	uiContainer.addChild(colorPanel)
-	const frame2 = new Graphics()
-	frame2.roundRect(-frameW / 2, -frameH / 2, frameW, frameH, 16)
-	frame2.fill({ color: 0x0a0f12, alpha: 0.8 })
-	frame2.stroke({ color: 0x98ffb3, width: 2, alpha: 0.6 })
-	colorPanel.addChild(frame2)
-	const colorSlots: { chip: Graphics; item: Container; key: BallColor }[] = []
-	const controlSpacing = Math.round((frameH - 40) / colors.length)
 
-	// Async Slot Creation
-	const slotPromises = colors.map(async (k, i) => {
-		const slotY =
-			-frameH / 2 +
-			20 +
-			i * controlSpacing +
-			Math.round(controlSpacing / 2)
-		const chip = new Graphics()
-		chip.roundRect(-frameW / 2 + 8, -28, frameW - 16, 56, 12)
-		chip.fill({ color: 0x0a0f12, alpha: 0.8 })
-		chip.stroke({
-			color: 0x98ffb3,
-			width: 2,
-			alpha: 0.6,
-		})
-		chip.y = slotY
-		const item = new Container()
-		item.y = slotY
-		item.eventMode = 'static'
-		item.cursor = 'pointer'
+	numberPicker.on('pointermove', onDragMove)
+	numberPicker.on('pointerup', onDragEnd)
+	numberPicker.on('pointerupoutside', onDragEnd)
 
-		const pv = await createBall(k, { noFX: true })
-		pv.scale.set(0.18)
-		pv.x = 0
-		pv.y = 0
-		item.addChild(pv)
-		item.on('pointertap', (ev: any) => {
-			playClickSound(k)
-			try {
-				console.log('Configurator/color chip tapped', { pick: k })
-				ev?.stopPropagation?.()
-			} catch (_) {}
-			void (async () => {
-				const currentUsed = usedColors.filter(c => c !== color)
-				if (currentUsed.includes(k)) {
-					try {
-						console.log('Configurator/color disabled', {
-							pick: k,
-							used: currentUsed,
-						})
-					} catch (_) {}
-					// Show error feedback
-					const errorLabel = new Text({
-						text: 'Taken',
-						style: {
-							fontFamily: 'system-ui',
-							fontSize: 14,
-							fill: 0xff4444,
-							fontWeight: 'bold',
-						},
-					})
-					errorLabel.anchor = 0.5
-					errorLabel.x = 0
-					errorLabel.y = 0
-					item.addChild(errorLabel)
-					pv.alpha = 0.2
-					gsap.to(errorLabel, {
-						y: -20,
-						alpha: 0,
-						duration: 1.0,
-						delay: 0.5,
-						onComplete: () => {
-							item.removeChild(errorLabel)
-							pv.alpha = 1
-						},
-					})
-					return
-				}
-				// Select color
-				playConfirmSound()
-				const newScene = await createConfiguratorScene(
-					w,
-					h,
-					k,
-					playerId,
-					usedColors,
-					slotIndex,
-					originalColor
-				)
-
-				// Attempt to replace the scene at the stage level to avoid nesting
-				const currentRoot = content.parent
-				if (currentRoot && currentRoot.parent) {
-					const stage = currentRoot.parent
-					stage.removeChild(currentRoot)
-					stage.addChild(newScene)
-					// Update global reference if possible (optional, but good for debugging)
-					try {
-						if (
-							(window as any).__app &&
-							(window as any).__app.stage
-						) {
-							// Check if main.ts configurator var needs update?
-							// We can't reach it easily. But visual replacement is enough.
-						}
-					} catch (_) {}
-				} else if (currentRoot) {
-					// Fallback if not attached to stage yet (unlikely)
-					currentRoot.removeChildren()
-					currentRoot.addChild(newScene)
-				}
-			})()
-		})
-		return { chip, item, key: k, index: i }
-	})
-
-	Promise.all(slotPromises).then(results => {
-		results
-			.sort((a, b) => a.index - b.index)
-			.forEach(r => {
-				colorPanel.addChild(r.chip)
-				colorPanel.addChild(r.item)
-				colorSlots.push(r)
-			})
-		renderColorSlots()
-	})
-
-	const renderColorSlots = () => {
-		for (let i = 0; i < colorSlots.length; i++) {
-			const s = colorSlots[i]
-			s.chip.stroke({
-				color: s.key === color ? 0x98ffb3 : 0x334155,
-				width: s.key === color ? 3 : 2,
-				alpha:
-					usedColors
-						.filter(c => c !== (originalColor || color))
-						.includes(s.key) && s.key !== color
-						? 0.25
-						: s.key === color
-						? 0.9
-						: 0.5,
-			})
-			const disabled =
-				usedColors
-					.filter(c => c !== (originalColor || color))
-					.includes(s.key) && s.key !== color
-			s.item.alpha = disabled ? 0.5 : s.key === color ? 1 : 0.95
-			s.item.cursor = disabled ? 'not-allowed' : 'pointer'
+	// Render Function
+	const renderUI = () => {
+		// 1. Left Tabs
+		const renderTab = (t: typeof tabColor) => {
+			const active = activeTab === t.mode
+			t.bg.clear()
+			if (active) {
+				t.bg.roundRect(-80, -25, 160, 50, 25)
+				t.bg.fill({ color: 0x98ffb3, alpha: 0.9 })
+				t.text.style.fill = 0x0a0f12
+			} else {
+				t.bg.roundRect(-70, -20, 140, 40, 20)
+				t.bg.fill({ color: 0x0a0f12, alpha: 0.6 })
+				t.bg.stroke({ color: 0x98ffb3, width: 1, alpha: 0.4 })
+				t.text.style.fill = 0x98ffb3
+			}
 		}
-	}
-	// Initial empty render (will be populated when promises resolve)
-	// renderColorSlots() // No slots yet
+		renderTab(tabColor)
+		renderTab(tabNumber)
 
-	setTab('color')
-	const errorLabel = new Text({
-		text: '',
-		style: { fontFamily: 'system-ui', fontSize: 16, fill: 0xff4d4f },
-	})
-	errorLabel.anchor = 0.5
-	errorLabel.x = Math.round(w / 2)
-	errorLabel.y = Math.round(h * 0.86)
-	errorLabel.alpha = 0
-	uiContainer.addChild(errorLabel)
-	const mintBtn = new Graphics()
-	mintBtn.roundRect(0, 0, 220, 50, 12)
-	mintBtn.fill({ color: 0xff6b00, alpha: 0.9 })
-	mintBtn.x = Math.round(w * 0.5 - 110)
-	mintBtn.y = Math.round(h * 0.9)
-	mintBtn.eventMode = 'static'
-	mintBtn.cursor = 'pointer'
-	uiContainer.addChild(mintBtn)
-	const mintLabel = new Text({
-		text: 'SAVE',
-		style: { fontFamily: 'system-ui', fontSize: 20, fill: 0x000000 },
-	})
-	mintLabel.anchor = 0.5
-	mintLabel.x = Math.round(mintBtn.x + 110)
-	mintLabel.y = Math.round(mintBtn.y + 25)
-	uiContainer.addChild(mintLabel)
-	mintBtn.on('pointertap', async (ev: any) => {
-		playConfirmSound()
-		const number = Math.max(
-			0,
-			Math.min(9, Number(String(numbers[selectedIndex])))
-		)
+		// 2. Right Panel Visibility
+		colorGrid.visible = activeTab === 'color'
+		numberPicker.visible = activeTab === 'number'
+
+		// 3. Color Grid
 		const currentUsed = usedColors.filter(
 			c => c !== (originalColor || color)
 		)
-		if (currentUsed.includes(color)) {
-			try {
-				console.log('Configurator/save blocked (duplicate)', {
-					color,
-					number,
-					usedColors,
-					originalColor,
-				})
-			} catch (_) {}
-			errorLabel.text = 'Color already used'
-			errorLabel.alpha = 1
-			gsap.fromTo(
-				errorLabel,
-				{ alpha: 0.0, y: errorLabel.y - 6 },
-				{ alpha: 1, y: errorLabel.y, duration: 0.18 }
-			)
-			gsap.to(errorLabel, { alpha: 0, delay: 1.2, duration: 0.3 })
+		colorItems.forEach(item => {
+			const isSelected = item.key === currentColor
+			const isTaken = currentUsed.includes(item.key) && !isSelected
+			const colorHex = BALL_COLORS_HEX[item.key]
+
+			item.bg.clear()
+			if (isSelected) {
+				// Selected: Bright, fully colored button, white border
+				item.bg.roundRect(-80, -30, 160, 60, 30)
+				item.bg.fill({ color: colorHex, alpha: 0.9 })
+				item.bg.stroke({ color: 0xffffff, width: 3 })
+			} else if (isTaken) {
+				// Taken: Dimmed, gray/dark
+				item.bg.roundRect(-70, -25, 140, 50, 25)
+				item.bg.fill({ color: 0x2a2a2a, alpha: 0.3 })
+				item.bg.stroke({ color: 0x555555, width: 1 })
+			} else {
+				// Normal: Colored tint, visible button
+				item.bg.roundRect(-75, -28, 150, 56, 28)
+				item.bg.fill({ color: colorHex, alpha: 0.4 })
+				item.bg.stroke({ color: colorHex, width: 2 })
+			}
+
+			item.container.alpha = isTaken ? 0.4 : 1
+			item.ball.scale.set(isSelected ? 0.09 : 0.08)
+		})
+
+		// 4. Number Picker
+		slotItems.forEach(item => {
+			const idx = selectedIndex + item.offset
+			if (idx >= 0 && idx < numbers.length) {
+				item.text.text = String(numbers[idx]).padStart(2, '0')
+				item.text.visible = true
+			} else {
+				item.text.visible = false
+			}
+
+			const isCenter = item.offset === 0
+			item.text.style.fontSize = isCenter ? 32 : 24
+			item.text.alpha = isCenter ? 1 : 0.5
+		})
+
+		// Update Center Ball Number
+		const updater = (centerContainer as any).updateNumber
+		if (updater) {
+			updater(numbers[selectedIndex])
+		}
+	}
+
+	// Error Feedback
+	const errorLabel = new Text({
+		text: '',
+		style: {
+			fontFamily: 'system-ui',
+			fontSize: 16,
+			fill: 0xff4d4f,
+			fontWeight: 'bold',
+		},
+	})
+	errorLabel.anchor.set(0.5)
+	errorLabel.x = w / 2
+	errorLabel.y = h * 0.85
+	errorLabel.alpha = 0
+	uiContainer.addChild(errorLabel)
+
+	const showError = (msg: string) => {
+		errorLabel.text = msg
+		errorLabel.alpha = 1
+		errorLabel.y = h * 0.85
+		gsap.from(errorLabel, { y: h * 0.85 + 10, alpha: 0, duration: 0.2 })
+		gsap.to(errorLabel, { alpha: 0, delay: 1.5, duration: 0.5 })
+	}
+
+	// --- FOOTER BUTTONS ---
+
+	// Save Button
+	const saveBtn = new Graphics()
+	saveBtn.roundRect(-100, -25, 200, 50, 25)
+	saveBtn.fill({ color: 0xff6b00 })
+	saveBtn.x = w / 2
+	saveBtn.y = h * 0.92
+	saveBtn.eventMode = 'static'
+	saveBtn.cursor = 'pointer'
+
+	const saveText = new Text({
+		text: 'SAVE',
+		style: {
+			fontFamily: 'system-ui',
+			fontSize: 20,
+			fill: 0x000000,
+			fontWeight: 'bold',
+		},
+	})
+	saveText.anchor.set(0.5)
+	saveText.position.set(0, 0)
+	saveBtn.addChild(saveText)
+	uiContainer.addChild(saveBtn)
+
+	saveBtn.on('pointertap', () => {
+		const number = Number(String(numbers[selectedIndex]))
+		const currentUsed = usedColors.filter(
+			c => c !== (originalColor || color)
+		)
+
+		if (currentUsed.includes(currentColor)) {
+			showError('Color already used')
 			return
 		}
-		try {
-			console.log('Configurator/save', {
-				color,
-				number,
-				usedColors,
-				originalColor,
-				slotIndex,
-			})
-			ev?.stopPropagation?.()
-		} catch (_) {}
+
+		playConfirmSound()
 		root.emit('configuratorSave', {
-			color,
+			color: currentColor,
 			number,
 			index: slotIndex,
 			playerId,
 		})
 	})
-	const back = new Graphics()
-	back.roundRect(0, 0, 90, 40, 10)
-	back.fill({ color: 0x0a0f12, alpha: 0.7 })
-	back.stroke({ color: 0x98ffb3, width: 2, alpha: 0.8 })
-	back.x = 20
-	back.y = 20
-	back.eventMode = 'static'
-	back.cursor = 'pointer'
-	const backLabel = new Text({
+
+	// Back Button
+	const backBtn = new Container()
+	backBtn.position.set(40, 40)
+
+	const backBg = new Graphics()
+	backBg.roundRect(0, 0, 80, 40, 20)
+	backBg.fill({ color: 0x0a0f12, alpha: 0.6 })
+	backBg.stroke({ color: 0x98ffb3, width: 2, alpha: 0.5 })
+	backBtn.addChild(backBg)
+
+	const backText = new Text({
 		text: 'BACK',
-		style: { fontFamily: 'system-ui', fontSize: 16, fill: 0x98ffb3 },
+		style: {
+			fontFamily: 'system-ui',
+			fontSize: 14,
+			fill: 0x98ffb3,
+			fontWeight: 'bold',
+		},
 	})
-	backLabel.anchor = 0.5
-	backLabel.x = back.x + 45
-	backLabel.y = back.y + 20
-	backLabel.eventMode = 'static'
-	backLabel.cursor = 'pointer'
-	content.addChild(back)
-	content.addChild(backLabel)
+	backText.anchor.set(0.5)
+	backText.position.set(40, 20)
+	backBtn.addChild(backText)
+
+	backBtn.eventMode = 'static'
+	backBtn.cursor = 'pointer'
+	uiContainer.addChild(backBtn)
+
 	const exit = () => {
 		root.emit('configuratorExit')
 		const el = document.getElementById('chatOverlay') as HTMLElement | null
-		if (el) {
-			try {
-				el.remove()
-			} catch (_) {}
-		}
+		if (el) el.remove()
 	}
-	back.on('pointertap', (ev: any) => {
-		try {
-			console.log('Configurator/back tapped (chip)')
-			ev?.stopPropagation?.()
-		} catch (_) {}
-		exit()
-	})
-	backLabel.on('pointertap', (ev: any) => {
-		try {
-			console.log('Configurator/back tapped (label)')
-			ev?.stopPropagation?.()
-		} catch (_) {}
-		exit()
-	})
-	// Minimized chat overlay (default collapsed)
+	backBtn.on('pointertap', exit)
+
+	// Initial Render
+	renderUI()
+
+	// --- CHAT OVERLAY (Keep existing) ---
 	{
 		const existing = document.getElementById(
 			'chatOverlay'
@@ -773,5 +785,6 @@ export async function createConfiguratorScene(
 			})
 		}
 	}
+
 	return root
 }

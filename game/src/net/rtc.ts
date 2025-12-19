@@ -60,9 +60,11 @@ export function createRTC(
 			localStream = await navigator.mediaDevices.getUserMedia(
 				getConstraints()
 			)
-		} catch (_) {
+		} catch (err) {
+			console.warn('RTC: getUserMedia failed', err)
 			localStream = null
 		}
+
 		if (localStream) {
 			localStream
 				.getAudioTracks()
@@ -432,43 +434,6 @@ export function createRTC(
 		ensureOverlay()
 
 		const tryGetMedia = async () => {
-			if (
-				!navigator.mediaDevices ||
-				!navigator.mediaDevices.getUserMedia
-			) {
-				console.error('RTC: navigator.mediaDevices not found')
-				if (overlay) {
-					// Use same error UI
-					let errDiv = document.getElementById(
-						'rtcError'
-					) as HTMLDivElement
-					if (!errDiv) {
-						errDiv = document.createElement('div')
-						errDiv.id = 'rtcError'
-						errDiv.style.position = 'absolute'
-						errDiv.style.top = '50%'
-						errDiv.style.left = '50%'
-						errDiv.style.transform = 'translate(-50%, -50%)'
-						errDiv.style.background = 'rgba(20,0,0,0.9)'
-						errDiv.style.padding = '20px'
-						errDiv.style.border = '1px solid #ff4444'
-						errDiv.style.borderRadius = '8px'
-						errDiv.style.textAlign = 'center'
-						errDiv.style.zIndex = '10001'
-						overlay.appendChild(errDiv)
-					}
-					errDiv.innerHTML = ''
-					const msg = document.createElement('div')
-					msg.style.color = '#fff'
-					msg.style.marginBottom = '12px'
-					msg.style.maxWidth = '280px'
-					msg.textContent =
-						'Secure context required (HTTPS or localhost).'
-					errDiv.appendChild(msg)
-					minimize(false)
-				}
-				return
-			}
 			try {
 				localStream = await navigator.mediaDevices.getUserMedia(
 					getConstraints()
@@ -741,15 +706,25 @@ export function createRTC(
 		// Flush pending signals that arrived before PC was ready
 		if (pendingSignals.length > 0) {
 			console.log(
-				`RTC: flushing ${pendingSignals.length} pending signals`
+				'RTC: flushing',
+				pendingSignals.length,
+				'buffered signals after init'
 			)
-			const signals = [...pendingSignals]
+			pendingSignals.forEach(handleSignal)
 			pendingSignals = []
-			signals.forEach(msg => handleSignal(msg))
 		}
 	}
 
 	const handleSignal = async (msg: any) => {
+		// Fix: Buffer signals until media is initialized (started = true)
+		if (!pc || !started) {
+			console.log(
+				'RTC: Buffering signal (waiting for start)...',
+				msg.type
+			)
+			pendingSignals.push(msg)
+			return
+		}
 		console.log(
 			'RTC: handleSignal',
 			msg.type,
@@ -758,11 +733,6 @@ export function createRTC(
 			'PC Ready:',
 			!!pc
 		)
-		if (!pc) {
-			console.log('RTC: PC not ready, queuing signal', msg.type)
-			pendingSignals.push(msg)
-			return
-		}
 
 		if (msg.type === 'rtc:offer') {
 			console.log(

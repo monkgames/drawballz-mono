@@ -1,5 +1,5 @@
 import { Container, Graphics, Text } from 'pixi.js'
-import { createBall, BallColor } from '@/modules/ball'
+import { createMasterBall, BallColor } from '@/modules/ball'
 import { playBeep } from '@/audio/sfx'
 import { toggleSettings } from '@/net/rtc'
 
@@ -41,6 +41,14 @@ export async function createBattleScene(
 	selfIdArg: string = 'A',
 	multipliersArg?: Record<number, number>
 ) {
+	console.log('createBattleScene init:', {
+		selfName,
+		opponentName,
+		selfBalls,
+		opponentBalls,
+		roundId: roundIdArg,
+		countdownMs: countdownMsArg,
+	})
 	const root = new Container()
 	const content = new Container()
 	content.sortableChildren = true
@@ -150,7 +158,11 @@ export async function createBattleScene(
 		balls: BattleBall[],
 		centerX: number,
 		rowY: number,
-		out: { node: Container; label: Text; bb: BattleBall }[]
+		out: {
+			node: Container
+			updateNumber: (v: string | number) => void
+			bb: BattleBall
+		}[]
 	) => {
 		const maxCount = Math.min(5, balls.length)
 		const sideWidth = Math.round(w * 0.44)
@@ -163,7 +175,11 @@ export async function createBattleScene(
 		)
 		for (let i = 0; i < maxCount; i++) {
 			const bb = balls[i]
-			const ball = await createBall(bb.color, { noFX: true })
+			const { container: ball, updateNumber } = await createMasterBall(
+				bb.color,
+				bb.number,
+				{ noFX: true }
+			)
 			const baseWidth =
 				((ball as any).userData?.baseWidth as number) || ball.width || 1
 			const scale = (targetWidth / baseWidth) * PLAYER_SCALE_MUL
@@ -177,29 +193,26 @@ export async function createBattleScene(
 			const baselineY = Math.round(rowY)
 			ball.x = x
 			ball.y = Math.round(baselineY - scale * (trailBottom || 0))
+
 			content.addChild(ball)
-			const numberLabel = new Text({
-				text: String(bb.number),
-				style: {
-					fontFamily: 'system-ui',
-					fontSize: 26,
-					fill: 0x98ffb3,
-					fontWeight: 'bold',
-					stroke: { color: 0x000000, width: 4 },
-				},
+			out.push({
+				node: ball,
+				updateNumber: updateNumber || (() => {}),
+				bb,
 			})
-			numberLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
-			numberLabel.anchor = 0.5
-			numberLabel.x = ball.x
-			// Center label visually on the ball
-			numberLabel.y = Math.round(ball.y)
-			content.addChild(numberLabel)
-			out.push({ node: ball, label: numberLabel, bb })
 		}
 	}
 
-	const leftItems: { node: Container; label: Text; bb: BattleBall }[] = []
-	const rightItems: { node: Container; label: Text; bb: BattleBall }[] = []
+	const leftItems: {
+		node: Container
+		updateNumber: (v: string | number) => void
+		bb: BattleBall
+	}[] = []
+	const rightItems: {
+		node: Container
+		updateNumber: (v: string | number) => void
+		bb: BattleBall
+	}[] = []
 	try {
 		let localSlotColors: string[] = []
 		try {
@@ -250,95 +263,10 @@ export async function createBattleScene(
 		rightColors: rightItems.map(it => it.bb.color),
 	}
 
-	const dbgPanel = new Graphics()
-	const dbgText = new Text({
-		text: '',
-		style: { fontFamily: 'system-ui', fontSize: 14, fill: 0xe6f7ff },
-	})
-	dbgText.resolution = Math.max(window.devicePixelRatio || 1, 2)
-	const dbgW = Math.min(320, Math.round(w * 0.36))
-	const dbgH = 140
-	dbgPanel.roundRect(0, 0, dbgW, dbgH, 12)
-	dbgPanel.fill({ color: 0x0a0f12, alpha: 0.9 })
-	dbgPanel.stroke({ color: 0x98ffb3, width: 2, alpha: 0.7 })
-	// Position panel above the toggle button
-	const toggleH = 32
-	dbgPanel.x = Math.round(w - dbgW - 24)
-	dbgPanel.y = Math.round(h - dbgH - 24 - toggleH - 8)
-	dbgText.x = dbgPanel.x + 12
-	dbgText.y = dbgPanel.y + 10
+	// Debug panel purged
+	const setDebug = (lines: string[]) => {}
+	let dbgLines: string[] = []
 
-	dbgPanel.visible = false
-	dbgText.visible = false
-
-	const dbgToggle = new Graphics()
-	const tW = 80
-	const tH = toggleH
-	dbgToggle.roundRect(0, 0, tW, tH, 8)
-	dbgToggle.fill({ color: 0x0a0f12, alpha: 0.8 })
-	dbgToggle.stroke({ color: 0x98ffb3, width: 1, alpha: 0.6 })
-	dbgToggle.x = Math.round(w - tW - 24)
-	dbgToggle.y = Math.round(h - tH - 24)
-	dbgToggle.eventMode = 'static'
-	dbgToggle.cursor = 'pointer'
-
-	const tLabel = new Text({
-		text: 'Debug',
-		style: { fontFamily: 'system-ui', fontSize: 12, fill: 0x98ffb3 },
-	})
-	tLabel.anchor = 0.5
-	tLabel.x = dbgToggle.x + tW / 2
-	tLabel.y = dbgToggle.y + tH / 2
-
-	dbgToggle.on('pointertap', () => {
-		const v = !dbgPanel.visible
-		dbgPanel.visible = v
-		dbgText.visible = v
-		tLabel.text = v ? 'Hide' : 'Debug'
-	})
-
-	content.addChild(dbgPanel)
-	content.addChild(dbgText)
-	content.addChild(dbgToggle)
-	content.addChild(tLabel)
-
-	// A/V Settings Button
-	const settingsBtn = new Graphics()
-	const sW = 110
-	const sH = 32
-	settingsBtn.roundRect(0, 0, sW, sH, 8)
-	settingsBtn.fill({ color: 0x22303a, alpha: 0.9 })
-	settingsBtn.stroke({ color: 0x98ffb3, width: 1, alpha: 0.7 })
-	settingsBtn.x = Math.round(w - sW - 24)
-	settingsBtn.y = 24
-	settingsBtn.eventMode = 'static'
-	settingsBtn.cursor = 'pointer'
-
-	const sLabel = new Text({
-		text: 'A/V Settings',
-		style: { fontFamily: 'system-ui', fontSize: 12, fill: 0x98ffb3 },
-	})
-	sLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
-	sLabel.anchor = 0.5
-	sLabel.x = sW / 2
-	sLabel.y = sH / 2
-	settingsBtn.addChild(sLabel)
-	settingsBtn.on('pointertap', () => toggleSettings())
-	content.addChild(settingsBtn)
-
-	// Weights UI purged
-	const setWeightsText = () => {}
-	;(async () => {})()
-
-	function setDebug(lines: string[]) {
-		dbgText.text = lines.join('\n')
-	}
-	let dbgLines: string[] = [
-		'Health: pending',
-		'Round: -',
-		'Seed: -',
-		'Status: pending',
-	]
 	setDebug(dbgLines)
 	let symDone = false
 	let colorDone = false
@@ -467,7 +395,11 @@ export async function createBattleScene(
 		} catch (_) {}
 	})()
 	function layoutRow(
-		items: { node: Container; label: Text; bb: BattleBall }[],
+		items: {
+			node: Container
+			updateNumber: (v: string | number) => void
+			bb: BattleBall
+		}[],
 		centerX: number,
 		rowY: number
 	) {
@@ -498,10 +430,6 @@ export async function createBattleScene(
 			;(node.scale as any).set?.(scale)
 			node.x = toX
 			node.y = toY
-			it.label.x = node.x
-			it.label.y = Math.round(
-				node.y - targetWidth * 0.28 * PLAYER_SCALE_MUL
-			)
 		}
 	}
 	const { gsap } = await import('gsap')
@@ -723,21 +651,9 @@ export async function createBattleScene(
 							duration: 0.8,
 							ease: 'power2.inOut',
 						}),
-						gsap.to(p.L.label, {
-							x: p.R.node.x,
-							y: p.R.label.y,
-							duration: 0.8,
-							ease: 'power2.inOut',
-						}),
 						gsap.to(p.R.node, {
 							x: p.L.node.x,
 							y: p.L.node.y,
-							duration: 0.8,
-							ease: 'power2.inOut',
-						}),
-						gsap.to(p.R.label, {
-							x: p.L.node.x,
-							y: p.L.label.y,
 							duration: 0.8,
 							ease: 'power2.inOut',
 						}),
@@ -756,16 +672,12 @@ export async function createBattleScene(
 							duration: dur,
 							ease: 'none',
 							onUpdate: () => {
-								p.L.label.text = Math.floor(
-									Math.random() * 10
-								).toString()
-								p.R.label.text = Math.floor(
-									Math.random() * 10
-								).toString()
+								p.L.updateNumber(Math.floor(Math.random() * 10))
+								p.R.updateNumber(Math.floor(Math.random() * 10))
 							},
 							onComplete: () => {
-								p.L.label.text = finalL.toString()
-								p.R.label.text = finalR.toString()
+								p.L.updateNumber(finalL)
+								p.R.updateNumber(finalR)
 							},
 						})
 					)
@@ -777,11 +689,6 @@ export async function createBattleScene(
 							gsap.to(p.L.node, {
 								alpha: 0,
 								y: elimY,
-								duration: 0.5,
-								delay: dur + 0.5,
-							}),
-							gsap.to(p.L.label, {
-								alpha: 0,
 								duration: 0.5,
 								delay: dur + 0.5,
 							}),
@@ -802,11 +709,6 @@ export async function createBattleScene(
 							gsap.to(p.R.node, {
 								alpha: 0,
 								y: elimY,
-								duration: 0.5,
-								delay: dur + 0.5,
-							}),
-							gsap.to(p.R.label, {
-								alpha: 0,
 								duration: 0.5,
 								delay: dur + 0.5,
 							}),
@@ -833,7 +735,6 @@ export async function createBattleScene(
 								alpha: 0,
 								duration: 0.8,
 							}),
-							gsap.to(p.L.label, { alpha: 0, duration: 0.5 }),
 							gsap.to(p.ringL, { alpha: 0, duration: 0.5 })
 						)
 					} else {
@@ -852,7 +753,6 @@ export async function createBattleScene(
 								alpha: 0,
 								duration: 0.8,
 							}),
-							gsap.to(p.R.label, { alpha: 0, duration: 0.5 }),
 							gsap.to(p.ringR, { alpha: 0, duration: 0.5 })
 						)
 					} else {
@@ -872,11 +772,9 @@ export async function createBattleScene(
 					content.removeChild(p.ringR)
 					if (eliminated.has(p.L)) {
 						content.removeChild(p.L.node)
-						content.removeChild(p.L.label)
 					}
 					if (eliminated.has(p.R)) {
 						content.removeChild(p.R.node)
-						content.removeChild(p.R.label)
 					}
 				} catch (_) {}
 			})
@@ -1044,7 +942,7 @@ export async function createBattleScene(
 				)
 				const maskItems: {
 					node: Container
-					label: Text
+					updateNumber: (v: string | number) => void
 					bb: BattleBall
 				}[] = []
 				await renderSide(
@@ -1084,12 +982,9 @@ export async function createBattleScene(
 					)
 					it.node.x = x
 					it.node.y = y
-					it.label.x = x
-					it.label.y = Math.round(y - targetW * 0.28 * 1.06)
 
 					// Entrance animation
 					it.node.alpha = 0
-					it.label.alpha = 0
 					gsap.to(it.node, {
 						alpha: 1,
 						duration: 0.4,
@@ -1102,17 +997,6 @@ export async function createBattleScene(
 						duration: 0.6,
 						delay: i * 0.1,
 						ease: 'back.out(1.7)',
-					})
-					gsap.to(it.label, {
-						alpha: 1,
-						duration: 0.4,
-						delay: i * 0.1 + 0.2,
-					})
-					gsap.from(it.label, {
-						y: it.label.y + 20,
-						duration: 0.4,
-						delay: i * 0.1 + 0.2,
-						ease: 'back.out(1.2)',
 					})
 				}
 				root.once('battle:cleanup', () => {
@@ -1243,8 +1127,8 @@ export async function createBattleScene(
 				countTimer = null
 			}
 			countLabel.destroy()
-			dbgText.destroy()
-			dbgPanel.destroy()
+			// dbgText.destroy()
+			// dbgPanel.destroy()
 		} catch (_) {}
 	})
 

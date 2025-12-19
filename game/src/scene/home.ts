@@ -1,7 +1,19 @@
 import { Container, Graphics, Text, Assets, Sprite, Texture } from 'pixi.js'
-import { createBall, BallColor } from '@/modules/ball'
+import {
+	createBall,
+	BallColor,
+	addDisplayToBall,
+	createMasterBall,
+} from '@/modules/ball'
 import { isMobileDevice, isSlowNetwork } from '@/util/env'
-import { stopBGM, autoStartBGM } from '@/audio/bgm'
+import {
+	stopBGM,
+	autoStartBGM,
+	setMuted,
+	ensureAudioUnlocked,
+	startBGMOnce,
+	stopBGMElement,
+} from '@/audio/bgm'
 import { playHoverSound, playClickSound } from '@/audio/sfx'
 import { gsap } from 'gsap'
 
@@ -43,11 +55,11 @@ function makeRadialTexture(
 const DESIGN_W = 1920
 const DESIGN_H = 1080
 const SHOW_GRID = false
-const SHOW_DEBUG = false
-const SHOW_STREAK_MARKERS = false
+const SHOW_DEBUG = true
+const SHOW_STREAK_MARKERS = true
 const RED_GAP_LOCKED = [40, 40, 40, 40] as const
-const YELLOW_GAP_LOCKED = 0
-const LOCK_POSITIONS = true
+const YELLOW_GAP_LOCKED = -54
+const LOCK_POSITIONS = false
 let LOCKED_YELLOW_GAPS: number[] | null = null
 
 async function loadBackgroundTexture(): Promise<Texture | null> {
@@ -462,21 +474,20 @@ export async function createHomeScene(w: number, h: number) {
 	}
 
 	const bgmBtnBox = new Graphics()
-	const BGM_W = 100
+	const BGM_W = 110
 	const BGM_H = 32
-	bgmBtnBox.roundRect(0, 0, BGM_W, BGM_H, 8)
+	bgmBtnBox.roundRect(0, 0, BGM_W, BGM_H, 16)
 	const bgmMutedInit =
 		(localStorage.getItem('bgmMuted') || '') === '1' ? true : false
-	bgmBtnBox.fill({
-		color: bgmMutedInit ? 0xff4d4f : 0x98ffb3,
-		alpha: 1.0,
-	})
-	bgmBtnBox.stroke({ color: 0xffffff, width: 2, alpha: 0.5 })
+
+	// Status Indicator Logic:
+	// Green = ON (Playing)
+	// Red = OFF (Muted)
 	bgmBtnBox.eventMode = 'static'
 	bgmBtnBox.cursor = 'pointer'
 	content.addChild(bgmBtnBox)
 
-	// Position BGM button at top-left (vacated by prize multipliers)
+	// Position BGM button at top-left
 	bgmBtnBox.x = 24
 	bgmBtnBox.y = 24
 
@@ -492,8 +503,13 @@ export async function createHomeScene(w: number, h: number) {
 	content.addChild(readyText)
 
 	const bgmBtnLabel = new Text({
-		text: bgmMutedInit ? 'BGM OFF' : 'BGM ON',
-		style: { fontFamily: 'system-ui', fontSize: 16, fill: 0x000000 },
+		text: bgmMutedInit ? 'BGM: OFF' : 'BGM: ON',
+		style: {
+			fontFamily: 'system-ui',
+			fontSize: 13,
+			fill: 0xffffff,
+			fontWeight: 'bold',
+		},
 	})
 	bgmBtnLabel.anchor = 0.5
 	bgmBtnLabel.x = Math.round(bgmBtnBox.x + BGM_W / 2)
@@ -501,33 +517,48 @@ export async function createHomeScene(w: number, h: number) {
 	bgmBtnLabel.roundPixels = true
 	bgmBtnLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	content.addChild(bgmBtnLabel)
+
+	let bgmStateMuted = bgmMutedInit
+
+	const drawBgmBtn = (muted: boolean) => {
+		bgmBtnBox.clear()
+		bgmBtnBox.roundRect(0, 0, BGM_W, BGM_H, 16)
+		// If Muted -> Red (OFF)
+		// If Not Muted -> Green (ON)
+		bgmBtnBox.fill({
+			color: muted ? 0xff4d4f : 0x98ffb3,
+			alpha: 0.9,
+		})
+		bgmBtnBox.stroke({ color: 0xffffff, width: 1.5, alpha: 0.4 })
+		bgmBtnLabel.text = muted ? 'BGM: OFF' : 'BGM: ON'
+		bgmBtnLabel.style.fill = muted ? 0xffffff : 0x0a0f12
+	}
+	drawBgmBtn(bgmStateMuted)
+
 	bgmBtnBox.on('pointertap', async () => {
 		try {
-			const {
-				isMuted,
-				setMuted,
-				ensureAudioUnlocked,
-				startBGMOnce,
-				stopBGMElement,
-				stopBGM,
-			} = await import('@/audio/bgm')
-			const mutedNow = isMuted()
-			if (mutedNow) {
+			// Toggle local state
+			bgmStateMuted = !bgmStateMuted
+
+			if (!bgmStateMuted) {
+				// Turn ON
 				setMuted(false)
-				bgmBtnBox.fill({ color: 0x98ffb3, alpha: 1.0 })
-				bgmBtnLabel.text = 'BGM ON'
+				drawBgmBtn(false)
 				await ensureAudioUnlocked()
 				await startBGMOnce()
 				stopBGMElement()
 			} else {
+				// Turn OFF
 				setMuted(true)
-				bgmBtnBox.fill({ color: 0xff4d4f, alpha: 1.0 })
-				bgmBtnLabel.text = 'BGM OFF'
+				drawBgmBtn(true)
 				stopBGM()
 				stopBGMElement()
 			}
-		} catch (_) {}
+		} catch (err) {
+			console.error('BGM toggle error', err)
+		}
 	})
+
 	const matchBtnBox = new Graphics()
 	const BTN_W = 260
 	const BTN_H = 56
@@ -540,6 +571,7 @@ export async function createHomeScene(w: number, h: number) {
 	matchBtnBox.y = Math.round(btnY + BTN_H / 2)
 	matchBtnBox.eventMode = 'static'
 	matchBtnBox.cursor = 'pointer'
+	matchBtnBox.zIndex = 100
 	content.addChild(matchBtnBox)
 
 	// Add pulse animation
@@ -566,6 +598,7 @@ export async function createHomeScene(w: number, h: number) {
 	matchBtnLabel.y = matchBtnBox.y
 	matchBtnLabel.roundPixels = true
 	matchBtnLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
+	matchBtnLabel.zIndex = 101
 	content.addChild(matchBtnLabel)
 
 	const cancelBtnBox = new Graphics()
@@ -578,6 +611,7 @@ export async function createHomeScene(w: number, h: number) {
 	cancelBtnBox.eventMode = 'none'
 	cancelBtnBox.cursor = 'auto'
 	cancelBtnBox.visible = false
+	cancelBtnBox.zIndex = 100
 	content.addChild(cancelBtnBox)
 
 	const cancelBtnLabel = new Text({
@@ -595,6 +629,7 @@ export async function createHomeScene(w: number, h: number) {
 	cancelBtnLabel.roundPixels = true
 	cancelBtnLabel.resolution = Math.max(window.devicePixelRatio || 1, 2)
 	cancelBtnLabel.visible = false
+	cancelBtnLabel.zIndex = 101
 	content.addChild(cancelBtnLabel)
 	const setBtnEnabled = (enabled: boolean) => {
 		matchBtnBox.alpha = enabled ? 1.0 : 0.4
@@ -645,7 +680,7 @@ export async function createHomeScene(w: number, h: number) {
 	})
 	// Debug panel is provided globally; omit per-home duplicate
 	const matchingUI = new Container()
-	matchingUI.zIndex = 900
+	matchingUI.zIndex = 2000
 	const loaderR2 = 18
 	const loader2 = new Graphics()
 	const loaderLabel = new Text({
@@ -657,7 +692,9 @@ export async function createHomeScene(w: number, h: number) {
 		style: { fontFamily: 'system-ui', fontSize: 16, fill: 0x98ffb3 },
 	})
 	loader2.x = Math.round(DESIGN_W / 2)
-	loader2.y = Math.round(btnY - 60)
+	// Move to center of screen to avoid overlap with balls (at bottom) and header (at top)
+	// Shifted up by 260px to avoid ball overlap
+	loader2.y = Math.round(DESIGN_H / 2 - 260)
 	loaderLabel.anchor = 0.5
 	loaderLabel.x = loader2.x
 	loaderLabel.y = loader2.y + 46
@@ -716,7 +753,7 @@ export async function createHomeScene(w: number, h: number) {
 		readyCountText.text = `Ready players: ${Math.max(0, Math.floor(n))}`
 	})
 	// Opponent badge is shown in battle scene; no badge on home
-	// Bet amount overlay (HTML) - Round Collapsible UI
+	// Bet amount overlay (HTML) - Ultra Compact
 	{
 		const existing = document.getElementById(
 			'betOverlay'
@@ -728,82 +765,61 @@ export async function createHomeScene(w: number, h: number) {
 		}
 		const overlay = document.createElement('div')
 		overlay.id = 'betOverlay'
-		overlay.style.position = 'fixed'
-		overlay.style.left = '24px'
-		overlay.style.bottom = '24px'
-		overlay.style.zIndex = '9999'
-		overlay.style.display = 'flex'
-		overlay.style.flexDirection = 'column'
-		overlay.style.alignItems = 'flex-start'
-		overlay.style.gap = '8px'
-
-		// Toggle Button (Round Chip)
-		const toggleBtn = document.createElement('div')
-		toggleBtn.style.width = '56px'
-		toggleBtn.style.height = '56px'
-		toggleBtn.style.borderRadius = '50%'
-		toggleBtn.style.background =
-			'linear-gradient(135deg, #1a2228 0%, #0a0f12 100%)'
-		toggleBtn.style.border = '2px solid #98ffb3'
-		toggleBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)'
-		toggleBtn.style.cursor = 'pointer'
-		toggleBtn.style.display = 'flex'
-		toggleBtn.style.alignItems = 'center'
-		toggleBtn.style.justifyContent = 'center'
-		toggleBtn.style.color = '#98ffb3'
-		toggleBtn.style.fontSize = '24px'
-		toggleBtn.style.transition = 'transform 0.2s, box-shadow 0.2s'
-		toggleBtn.innerHTML = '<span>$</span>' // Dollar sign icon
-		toggleBtn.title = 'Change Bet'
-
-		toggleBtn.addEventListener('mouseenter', () => {
-			toggleBtn.style.transform = 'scale(1.05)'
-			toggleBtn.style.boxShadow = '0 6px 16px rgba(152, 255, 179, 0.3)'
-		})
-		toggleBtn.addEventListener('mouseleave', () => {
-			toggleBtn.style.transform = 'scale(1)'
-			toggleBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)'
+		Object.assign(overlay.style, {
+			position: 'fixed',
+			left: '20px',
+			bottom: '20px',
+			zIndex: '9999',
+			display: 'flex',
+			alignItems: 'center',
+			background: 'rgba(10, 15, 18, 0.85)',
+			backdropFilter: 'blur(4px)',
+			padding: '3px',
+			borderRadius: '16px',
+			border: '1px solid rgba(152, 255, 179, 0.25)',
+			boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+			gap: '6px',
+			transition: 'transform 0.2s, box-shadow 0.2s',
 		})
 
-		// Collapsible Panel
-		const panel = document.createElement('div')
-		panel.style.display = 'none' // Hidden by default
-		panel.style.alignItems = 'center'
-		panel.style.gap = '8px'
-		panel.style.padding = '12px 16px'
-		panel.style.background = 'rgba(10,15,18,0.95)'
-		panel.style.border = '1px solid #375a44'
-		panel.style.borderRadius = '24px' // Rounded pill shape
-		panel.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)'
-		panel.style.marginBottom = '8px' // Space above toggle button
+		// Icon Circle
+		const icon = document.createElement('div')
+		Object.assign(icon.style, {
+			width: '26px',
+			height: '26px',
+			borderRadius: '50%',
+			background: 'linear-gradient(135deg, #1a2228 0%, #0a0f12 100%)',
+			border: '1px solid #98ffb3',
+			color: '#98ffb3',
+			display: 'flex',
+			alignItems: 'center',
+			justifyContent: 'center',
+			fontWeight: 'bold',
+			fontSize: '13px',
+			boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
+			flexShrink: '0',
+		})
+		icon.innerHTML = '<span>$</span>'
+		overlay.appendChild(icon)
 
-		const label = document.createElement('span')
-		label.textContent = 'Bet'
-		label.style.color = '#e6f7ff'
-		label.style.fontWeight = '600'
-
+		// Input Field
 		const input = document.createElement('input')
 		input.type = 'number'
 		input.min = '1'
 		input.step = '1'
-		input.placeholder = 'Amount'
-		input.style.width = '100px'
-		input.style.padding = '8px 12px'
-		input.style.color = '#e6f7ff'
-		input.style.background = '#0a0f12'
-		input.style.border = '1px solid #334155'
-		input.style.borderRadius = '12px'
-		input.style.outline = 'none'
-
-		const setBtn = document.createElement('button')
-		setBtn.textContent = 'Set'
-		setBtn.style.padding = '8px 16px'
-		setBtn.style.background = '#98ffb3'
-		setBtn.style.color = '#000'
-		setBtn.style.border = 'none'
-		setBtn.style.borderRadius = '12px'
-		setBtn.style.cursor = 'pointer'
-		setBtn.style.fontWeight = 'bold'
+		input.placeholder = 'Bet'
+		Object.assign(input.style, {
+			width: '50px',
+			background: 'transparent',
+			border: 'none',
+			color: '#e6f7ff',
+			fontSize: '13px',
+			fontWeight: 'bold',
+			outline: 'none',
+			textAlign: 'left',
+			fontFamily: 'system-ui',
+			padding: '0 6px 0 0',
+		})
 
 		const saved = Math.max(
 			1,
@@ -811,64 +827,32 @@ export async function createHomeScene(w: number, h: number) {
 		)
 		if (saved > 0) input.value = String(saved)
 
-		const applyBetStyle = () => {
-			const v = Math.max(1, Math.floor(Number(input.value) || 0))
-			const ok = v > 0
-			const borderColor = ok ? '#3bd38c' : '#ff4d4f'
-			input.style.border = `1px solid ${borderColor}`
-		}
-
-		const submit = () => {
-			const v = Math.max(1, Math.floor(Number(input.value) || 0))
+		const updateBet = () => {
+			let v = Math.floor(Number(input.value))
+			if (isNaN(v) || v < 1) v = 1
+			input.value = String(v)
 			localStorage.setItem('betAmount', String(v))
 			root.emit('betUpdated', v)
-			applyBetStyle()
-			// Auto-collapse after setting
-			panel.style.display = 'none'
-			// Update toggle button text temporarily or show feedback?
-			// For now just collapse
 		}
 
-		setBtn.addEventListener('click', submit)
-		input.addEventListener('keydown', e => {
-			if ((e as KeyboardEvent).key === 'Enter') submit()
-		})
-		input.addEventListener('input', applyBetStyle)
+		input.onchange = updateBet
+		input.onblur = updateBet
+		input.onkeydown = e => {
+			if (e.key === 'Enter') {
+				input.blur()
+			}
+		}
 
-		panel.appendChild(label)
-		panel.appendChild(input)
-		panel.appendChild(setBtn)
-
-		// Structure: Overlay -> [Panel, ToggleBtn]
-		// Since flex-direction is column-reverse (we want panel above button),
-		// or we can use column and put panel first?
-		// User said "round collapsible ui". Usually expands outwards.
-		// Let's keep it simple: Button at bottom, panel appears above it.
-		overlay.style.flexDirection = 'column-reverse'
-
-		overlay.appendChild(toggleBtn)
-		overlay.appendChild(panel)
+		overlay.appendChild(input)
 		document.body.appendChild(overlay)
 
-		toggleBtn.addEventListener('click', () => {
-			const isVisible = panel.style.display === 'flex'
-			panel.style.display = isVisible ? 'none' : 'flex'
-			if (!isVisible) {
-				setTimeout(() => input.focus(), 50)
-			}
-		})
-
-		applyBetStyle()
 		root.on('destroyed', () => {
 			try {
-				setBtn.removeEventListener('click', submit)
 				overlay.remove()
 			} catch (_) {}
 		})
 	}
-	// Prize multipliers panel purged
-	// n/5 Configured text purged
-	const countTextRef: Text | null = null
+
 	const proposalUI = new Container()
 	proposalUI.zIndex = 1000
 
@@ -983,82 +967,121 @@ export async function createHomeScene(w: number, h: number) {
 			}
 		} catch (_) {}
 	}
-	const balls = await Promise.all(colors.map((c: BallColor) => createBall(c)))
+	const ballResults = await Promise.all(
+		colors.map((c: BallColor) =>
+			createMasterBall(c, '00', { gap: YELLOW_GAP_LOCKED })
+		)
+	)
+	const balls = ballResults.map(r => r.container)
 
-	const targetWidths = [300, 460, 520, 460, 300]
+	const rawTargetWidths = [420, 420, 420, 420, 420]
+	// Calculate fit scale to ensure all 5 balls fit within design width
+	const totalRawW = rawTargetWidths.reduce((a, b) => a + b, 0)
+	const GRID_SIZE = 40
+	const ADJ_GAP = 10 // Trimmed gap
+	const totalGap = ADJ_GAP * 4
+	const maxW = DESIGN_W * 0.95 // Use 95% of width
+	const fitScale = Math.min(1, (maxW - totalGap) / totalRawW)
+	const SIZE_FACTOR = 0.42 // Increased by 40% (0.3 * 1.4)
+
+	const targetWidths = rawTargetWidths.map(w =>
+		Math.round(w * fitScale * SIZE_FACTOR)
+	)
+
 	const baseWidths = balls.map(
 		(b: Container) =>
 			((b as any).userData?.baseWidth as number) || b.width || 1
 	)
-	const GRID_SIZE = 40
-	const snap = (n: number) => Math.round(n / GRID_SIZE) * GRID_SIZE
-	const rowY = snap(860)
-	const depthOffsets = [-16, 26, 8, 26, -16]
-	const ADJ_GAP = GRID_SIZE * 1
-	let ballWidths = targetWidths.slice()
-	{
-		ballWidths[0] = Math.round(ballWidths[0] * 1.2)
-		ballWidths[4] = Math.round(ballWidths[4] * 1.2)
-		const totalBallWidth = ballWidths.reduce((a, b) => a + b, 0)
-		const totalGaps = ADJ_GAP * 4
-		const margin = GRID_SIZE * 2
-		const maxRowWidth = DESIGN_W - margin * 2
-		const s = Math.min(
-			1,
-			((maxRowWidth - totalGaps) / totalBallWidth) * 0.7
-		)
-		ballWidths = ballWidths.map(w => Math.round(w * s))
+
+	// Y Position Logic - Simple Arch
+	// Center (index 2) is lowest (closest)
+	// Outer (0,4) are highest (farthest)
+	const BASE_Y = Math.round(DESIGN_H * 0.6) // Lower on screen (~650px)
+	const ARCH_OFFSET = 100 * SIZE_FACTOR // Scale arch height too
+
+	const getY = (i: number) => {
+		// Distance from center index (2)
+		const dist = Math.abs(i - 2)
+		// dist 0 -> offset 0
+		// dist 1 -> offset 0.5 * ARCH_OFFSET
+		// dist 2 -> offset 1.0 * ARCH_OFFSET
+		// We subtract because lower Y is higher on screen? No, +Y is down.
+		// We want center to be lower (higher Y value).
+		// So outer balls should have smaller Y value.
+		return BASE_Y - (dist / 2) * ARCH_OFFSET
 	}
-	const scales = ballWidths.map((w, i) => w / baseWidths[i])
+
+	const scales = targetWidths.map((w, i) => w / baseWidths[i])
 	balls.forEach((b: Container, i: number) => b.scale.set(scales[i]))
-	const xMid = DESIGN_W / 2
-	const leftEdges: number[] = []
-	leftEdges[2] = snap(xMid - ballWidths[2] / 2)
-	leftEdges[1] = leftEdges[2] - (ballWidths[1] + ADJ_GAP)
-	leftEdges[0] = leftEdges[1] - (ballWidths[0] + ADJ_GAP)
-	leftEdges[3] = leftEdges[2] + (ballWidths[2] + ADJ_GAP)
-	leftEdges[4] = leftEdges[3] + (ballWidths[3] + ADJ_GAP)
+
+	// X Position Logic - Center Outwards
 	const xPositions: number[] = []
-	for (let i = 0; i < 5; i++) xPositions[i] = leftEdges[i] + ballWidths[i] / 2
+	const centerI = 2
+	xPositions[centerI] = DESIGN_W / 2
+
+	// Working outwards from center
+	// Left side
+	xPositions[1] =
+		xPositions[2] - (targetWidths[2] / 2 + ADJ_GAP + targetWidths[1] / 2)
+	xPositions[0] =
+		xPositions[1] - (targetWidths[1] / 2 + ADJ_GAP + targetWidths[0] / 2)
+	// Right side
+	xPositions[3] =
+		xPositions[2] + (targetWidths[2] / 2 + ADJ_GAP + targetWidths[3] / 2)
+	xPositions[4] =
+		xPositions[3] + (targetWidths[3] / 2 + ADJ_GAP + targetWidths[4] / 2)
 
 	balls.forEach((ball: Container, i: number) => {
-		const metrics = (ball as any).userData || {
-			trailBottomOffset: ball.height / 2,
-		}
-		const dropBy = GRID_SIZE * 3
-		const perRow =
-			rowY + depthOffsets[i] + (i === 1 || i === 3 ? dropBy : 0)
 		ball.x = Math.round(xPositions[i])
-		ball.y = Math.round(
-			perRow - scales[i] * (metrics.trailBottomOffset || 0)
-		)
+		ball.y = Math.round(getY(i))
+
 		content.addChild(ball)
+
+		// Fix Trail Sizes - Make them visually uniform
 		const trailSprite = (ball as any).userData?.trail as Sprite | undefined
-		if (trailSprite && !LOCK_POSITIONS) {
-			gsap.to(trailSprite, {
-				alpha: 0.8,
-				yoyo: true,
-				repeat: -1,
-				duration: 1.6 + i * 0.1,
-				ease: 'sine.inOut',
-			})
+		if (trailSprite) {
+			const baseW = (ball as any).userData?.baseWidth || 1
+			const trailTexW = trailSprite.texture.width || 1
+
+			// Force trail width to match ball width exactly for uniformity
+			// This ensures all trails have the same visual width on screen
+			const TRAIL_WIDTH_RATIO = 1.0
+			const k = (baseW / trailTexW) * TRAIL_WIDTH_RATIO
+
+			trailSprite.scale.set(k)
+			trailSprite.x = 0
+
+			// Position Logic matching updateBallSprite
+			const ballSprite = (ball as any).userData?.ball as
+				| Sprite
+				| undefined
+			if (ballSprite) {
+				const ballTexH = ballSprite.texture.height || ballSprite.height
+				const texH = trailSprite.texture.height || trailSprite.height
+				const s = scales[i]
+
+				const color = colors[i]
+				let correction = 0
+				if (color === 'blue') correction = -25
+				if (color === 'yellow') correction = -2
+
+				const visualGap = YELLOW_GAP_LOCKED * SIZE_FACTOR
+
+				// Calculate local Y position
+				// ballBottom (local) = ballTexH / 2
+				// trailTop (local) = trail.y - (texH * k) / 2
+				// We want: trailTop = ballBottom + (visualGap / s) + (correction / s)
+				// So: trail.y = ballTexH / 2 + visualGap / s + correction / s + (texH * k) / 2
+
+				trailSprite.y =
+					ballTexH / 2 + (visualGap + correction) / s + (texH * k) / 2
+			}
+
+			if (!LOCK_POSITIONS) {
+				// Trail animation removed
+			}
 		}
 	})
-
-	{
-		const shift = GRID_SIZE * 1
-		balls[0].y += shift
-		balls[2].y += shift
-		balls[4].y += shift
-	}
-	{
-		const extra = GRID_SIZE * 3
-		balls[2].y += extra
-	}
-	{
-		const shiftAll = GRID_SIZE * 3
-		for (let i = 0; i < balls.length; i++) balls[i].y += shiftAll
-	}
 
 	{
 		for (let i = 0; i < balls.length; i++) {
@@ -1070,6 +1093,68 @@ export async function createHomeScene(w: number, h: number) {
 		}
 	}
 
+	if (SHOW_DEBUG) {
+		const debugG = new Graphics()
+		content.addChild(debugG)
+
+		// Red Markers (Horizontal Gap)
+		for (let i = 0; i < balls.length - 1; i++) {
+			const b1 = balls[i]
+			const b2 = balls[i + 1]
+
+			const w1 = targetWidths[i]
+			const w2 = targetWidths[i + 1]
+
+			const x1 = b1.x + w1 / 2
+			const x2 = b2.x - w2 / 2
+
+			// Draw Red Rect for gap
+			const cy = (b1.y + b2.y) / 2
+			debugG.rect(x1, cy - 10, x2 - x1, 20)
+			debugG.fill({ color: 0xff0000, alpha: 0.6 })
+
+			// Label
+			const txt = new Text({
+				text: Math.round(x2 - x1) + 'px',
+				style: { fontSize: 12, fill: 0xffffff },
+			})
+			txt.anchor.set(0.5)
+			txt.x = (x1 + x2) / 2
+			txt.y = cy - 20
+			debugG.addChild(txt)
+		}
+
+		// Yellow Markers (Vertical Gap)
+		balls.forEach((b, i) => {
+			const trail = (b as any).userData?.trail as Sprite
+			const ball = (b as any).userData?.ball as Sprite
+			if (trail && ball) {
+				const s = scales[i]
+				const ballH = ball.texture.height || ball.height
+				const ballBottomY = b.y + (ballH / 2) * s
+
+				// Visual Gap
+				const visualGap = YELLOW_GAP_LOCKED * SIZE_FACTOR
+
+				// Draw Yellow Rect for gap (negative goes up)
+				debugG.rect(b.x - 6, ballBottomY, 12, visualGap)
+				debugG.fill({ color: 0xffff00, alpha: 0.6 })
+
+				// Label
+				const txt = new Text({
+					text: visualGap.toFixed(1),
+					style: { fontSize: 10, fill: 0xffff00 },
+				})
+				txt.anchor.set(0.5)
+				txt.x = b.x
+				txt.y = ballBottomY + visualGap - 10
+				debugG.addChild(txt)
+			}
+		})
+	}
+
+	// Hover animation removed
+
 	{
 		for (let i = 0; i < balls.length; i++) {
 			balls[i].filters = []
@@ -1078,26 +1163,14 @@ export async function createHomeScene(w: number, h: number) {
 				| Sprite
 				| undefined
 			if (ballSprite) {
+				// Hover animation removed
+
 				ballSprite.eventMode = 'static'
 				ballSprite.cursor = 'pointer'
-				const baseScale = ballSprite.scale.x || 1
 				ballSprite.on('pointerover', () => {
 					playHoverSound(colors[i])
-					gsap.to(ballSprite.scale, {
-						x: baseScale * 1.08,
-						y: baseScale * 1.08,
-						duration: 0.3,
-						ease: 'back.out(1.7)',
-					})
 				})
-				ballSprite.on('pointerout', () => {
-					gsap.to(ballSprite.scale, {
-						x: baseScale,
-						y: baseScale,
-						duration: 0.3,
-						ease: 'power2.out',
-					})
-				})
+				// pointerout removed as it only handled animation
 				ballSprite.on('pointertap', () => {
 					root.emit('configureBall', colors[i], i, colors.slice())
 				})
@@ -1181,26 +1254,80 @@ export async function createHomeScene(w: number, h: number) {
 					container.removeChild(existingBall)
 				} catch (_) {}
 			}
+			const existingDisplay = (container as any).displayContainer as
+				| Container
+				| undefined
+			if (existingDisplay) {
+				try {
+					container.removeChild(existingDisplay)
+					;(container as any).displayContainer = undefined
+				} catch (_) {}
+			}
+
+			// Adjust trail position for empty slot to prevent overflow
+			const existingTrail = (container as any).userData?.trail as
+				| Sprite
+				| undefined
+
+			// Use baseWidth for local radius (scaled appropriately by bubble logic)
+			const radiusLocal = Math.round((baseWidths[i] / 2) * 0.55)
+
+			if (existingTrail) {
+				const s = scales[i]
+				// Counter-scale
+				const uniformTrailScale = 1.2 * SIZE_FACTOR
+				existingTrail.scale.set(uniformTrailScale / s)
+
+				const trailH =
+					existingTrail.texture.height || existingTrail.height
+
+				let correction = 0
+				const c = colors[i]
+				if (c === 'blue') correction = -25
+				if (c === 'yellow') correction = -2
+
+				// Calculate gap in LOCAL coordinates
+				// visualGap = YELLOW_GAP_LOCKED * SIZE_FACTOR
+				const visualGap = YELLOW_GAP_LOCKED * SIZE_FACTOR
+
+				// Position relative to bubble (radiusLocal is effectively ballH/2 equivalent)
+				// existingTrail.y = radiusLocal + visualGap/s + (trailH * uniformTrailScale)/2/s + correction/s
+
+				existingTrail.y =
+					radiusLocal +
+					(visualGap + (trailH * uniformTrailScale) / 2) / s +
+					correction / s
+
+				// Update container Y to keep trail bottom aligned
+				const newTrailBottomOffset = existingTrail.y + trailH / 2
+
+				container.y = getY(i)
+				;(container as any).userData.trailBottomOffset =
+					newTrailBottomOffset
+			}
+
 			const s0 = scales[i]
 			let bubble = (container as any).userData?.bubble as
 				| Graphics
 				| undefined
 			if (!bubble) {
 				const b = new Graphics()
-				const radius = Math.round((ballWidths[i] / 2) * 0.55)
-				b.circle(0, 0, radius)
-				b.fill({ color: 0x0a0f12, alpha: 0.35 })
-				b.stroke({ color: 0x334155, width: 2, alpha: 0.9 })
+				// Draw bubble with local radius
+				b.circle(0, 0, radiusLocal)
+				// Red bubble style for "add ball" indicator
+				b.fill({ color: 0xff4d4f, alpha: 0.2 })
+				b.stroke({ color: 0xff4d4f, width: 2, alpha: 0.8 })
 				b.eventMode = 'static'
 				b.cursor = 'pointer'
-				b.scale.set(s0)
+				// Set scale to 1 (local) because container is already scaled by s0
+				b.scale.set(1)
 
 				const plus = new Text({
 					text: '+',
 					style: {
 						fontFamily: 'system-ui',
-						fontSize: Math.round(radius * 1.2),
-						fill: 0x334155,
+						fontSize: Math.round(radiusLocal * 1.2),
+						fill: 0xff4d4f,
 						fontWeight: 'bold',
 						align: 'center',
 					},
@@ -1211,21 +1338,23 @@ export async function createHomeScene(w: number, h: number) {
 				b.addChild(plus)
 
 				b.on('pointerover', () => {
-					b.stroke({ color: 0x98ffb3, width: 2, alpha: 1 })
-					plus.style.fill = 0x98ffb3
+					b.fill({ color: 0xff4d4f, alpha: 0.4 })
+					b.stroke({ color: 0xffffff, width: 2, alpha: 1 })
+					plus.style.fill = 0xffffff
 					gsap.to(b.scale, {
-						x: s0 * 1.1,
-						y: s0 * 1.1,
+						x: 1.1,
+						y: 1.1,
 						duration: 0.3,
 						ease: 'back.out(1.7)',
 					})
 				})
 				b.on('pointerout', () => {
-					b.stroke({ color: 0x334155, width: 2, alpha: 0.9 })
-					plus.style.fill = 0x334155
+					b.fill({ color: 0xff4d4f, alpha: 0.2 })
+					b.stroke({ color: 0xff4d4f, width: 2, alpha: 0.8 })
+					plus.style.fill = 0xff4d4f
 					gsap.to(b.scale, {
-						x: s0,
-						y: s0,
+						x: 1,
+						y: 1,
 						duration: 0.3,
 						ease: 'power2.out',
 					})
@@ -1245,36 +1374,6 @@ export async function createHomeScene(w: number, h: number) {
 		}
 	}
 
-	{
-		const configNodes: Record<
-			number,
-			{ ring: Graphics; label: Text; del?: Text }
-		> = Object.create(null)
-		let countTextRef: Text | null = null
-		const applyConfigured = () => {
-			let configured: Record<string, number> = {}
-			try {
-				configured =
-					JSON.parse(localStorage.getItem('configuredMap') || '{}') ||
-					{}
-			} catch (_) {}
-			const count = Object.values(configured).filter(
-				v => (Number(v) || 0) > 0
-			).length
-			root.emit('readyStatus', count >= 5)
-			try {
-				console.log('Home/refreshConfigured', { count, configured })
-			} catch (_) {}
-			// n/5 Configured update purged
-			// for (const key of Object.keys(configNodes)) ... removed
-		}
-		// n/5 Configured creation purged
-		// for (let i = 0; i < balls.length; i++) ... removed
-
-		applyConfigured()
-		root.on('refreshConfigured', () => applyConfigured())
-	}
-
 	// allow main app to update a ball sprite color by index
 	root.on('updateBallSprite', async (idx: number, newColor: string) => {
 		try {
@@ -1292,6 +1391,9 @@ export async function createHomeScene(w: number, h: number) {
 			const existingBubble = (container as any).userData?.bubble as
 				| Graphics
 				| undefined
+			const existingDisplay = (container as any).displayContainer as
+				| Container
+				| undefined
 			if (existingBall) {
 				try {
 					container.removeChild(existingBall)
@@ -1308,6 +1410,12 @@ export async function createHomeScene(w: number, h: number) {
 					;(existingBubble as any)?.destroy?.()
 				} catch (_) {}
 			}
+			if (existingDisplay) {
+				try {
+					container.removeChild(existingDisplay)
+					;(container as any).displayContainer = undefined
+				} catch (_) {}
+			}
 
 			// Check configuration
 			let map: Record<string, number> = {}
@@ -1322,13 +1430,14 @@ export async function createHomeScene(w: number, h: number) {
 			if (!isConfigured) {
 				// Create Bubble
 				const b = new Graphics()
-				const radius = Math.round((ballWidths[i] / 2) * 0.55)
+				// Use baseWidth for local radius so it scales with container
+				const radius = Math.round((baseWidths[i] / 2) * 0.55)
 				b.circle(0, 0, radius)
 				b.fill({ color: 0x0a0f12, alpha: 0.35 })
 				b.stroke({ color: 0x334155, width: 2, alpha: 0.9 })
 				b.eventMode = 'static'
 				b.cursor = 'pointer'
-				b.scale.set(s)
+				b.scale.set(1)
 
 				const plus = new Text({
 					text: '+',
@@ -1376,62 +1485,82 @@ export async function createHomeScene(w: number, h: number) {
 				return
 			}
 
-			// Create Ball
-			const fresh = await createBall(newColor as any)
-			const freshBall = (fresh as any).userData?.ball as
-				| Sprite
-				| undefined
-			const freshTrail = (fresh as any).userData?.trail as
-				| Sprite
-				| undefined
-			let ballSpriteNew: Sprite | undefined = freshBall
-			let trailSpriteNew: Sprite | undefined = freshTrail
-			if (!ballSpriteNew) {
-				const fallback = await createBall(newColor as any, {
-					noFX: true,
-				})
-				ballSpriteNew = (fallback as any).userData?.ball as
-					| Sprite
-					| undefined
+			// Create Ball using Master Config
+			const {
+				container: masterContainer,
+				updateNumber,
+				displayContainer,
+			} = await createMasterBall(
+				newColor as any,
+				val, // Use configured number
+				{ gap: YELLOW_GAP_LOCKED }
+			)
+
+			// Transfer children from masterContainer to existing container
+			// masterContainer has [Trail, Ball, Display] (roughly)
+			// We want to insert Shadow between Trail and Ball if possible, or just behind Ball.
+
+			// Extract sprites from masterContainer userData
+			const ballSpriteNew = (masterContainer as any).userData
+				?.ball as Sprite
+			const trailSpriteNew = (masterContainer as any).userData
+				?.trail as Sprite
+
+			// Move children to our container
+			while (masterContainer.children.length > 0) {
+				container.addChild(masterContainer.children[0])
 			}
+
+			// Update userData
+			;(container as any).userData = {
+				...(container as any).userData,
+				ball: ballSpriteNew,
+				trail: trailSpriteNew,
+				bubble: undefined,
+			}
+			;(container as any).displayContainer = displayContainer
+			;(container as any).updateNumber = updateNumber
+
 			if (trailSpriteNew) {
 				trailSpriteNew.eventMode = 'none'
-				container.addChild(trailSpriteNew)
-				if (!LOCK_POSITIONS) {
-					gsap.to(trailSpriteNew, {
-						alpha: 0.8,
-						yoyo: true,
-						repeat: -1,
-						duration: 1.6 + i * 0.1,
-						ease: 'sine.inOut',
-					})
-				}
+				// Trail animation removed
 			}
+
 			if (ballSpriteNew) {
 				ballSpriteNew.eventMode = 'static'
 				ballSpriteNew.cursor = 'pointer'
-				const baseScale = ballSpriteNew.scale.x || 1
 				ballSpriteNew.on('pointerover', () => {
 					playHoverSound(newColor as any)
-					gsap.to(ballSpriteNew.scale, {
-						x: baseScale * 1.08,
-						y: baseScale * 1.08,
-						duration: 0.3,
-						ease: 'back.out(1.7)',
-					})
 				})
-				ballSpriteNew.on('pointerout', () => {
-					gsap.to(ballSpriteNew.scale, {
-						x: baseScale,
-						y: baseScale,
-						duration: 0.3,
-						ease: 'power2.out',
-					})
-				})
+				// pointerout removed
+
+				const shadowTex = makeRadialTexture(
+					512,
+					'rgba(0,0,0,0.35)',
+					'rgba(0,0,0,0)'
+				)
+				const shadow = new Sprite({ texture: shadowTex })
+				shadow.anchor = 0.5
+				const shDiameter =
+					Math.max(ballSpriteNew.width, ballSpriteNew.height) * 1.2
+				const shScale = shDiameter / 512
+				shadow.scale.set(shScale)
+				shadow.alpha = 0.14
+				shadow.x = 0
+				shadow.y =
+					Math.max(ballSpriteNew.height, ballSpriteNew.width) * 0.12
+				shadow.eventMode = 'none'
+
+				// Insert shadow behind ball
+				// We need to find the index of the ball and insert before it
+				const ballIndex = container.getChildIndex(ballSpriteNew)
+				container.addChildAt(shadow, Math.max(0, ballIndex))
+
+				// Shadow animation removed
+
 				ballSpriteNew.on('pointertap', () => {
 					root.emit('configureBall', newColor, i, colors.slice())
 				})
-				container.addChild(ballSpriteNew)
 
 				// Restore Configured Indicator (Ring)
 				const ring = new Graphics()
@@ -1439,40 +1568,23 @@ export async function createHomeScene(w: number, h: number) {
 					Math.max(ballSpriteNew.width, ballSpriteNew.height) * 0.65
 				ring.arc(0, 0, r, 0, Math.PI * 2)
 				ring.stroke({ color: 0x98ffb3, width: 3, alpha: 0.8 })
-				// Dashed effect simulated by mask or multiple arcs?
-				// Simple glow ring is fine for now, user asked for "circle indicator"
 				ring.eventMode = 'none'
 				container.addChild(ring)
 
-				// Animate ring
-				gsap.to(ring.scale, {
-					x: 1.1,
-					y: 1.1,
-					duration: 1.5,
-					yoyo: true,
-					repeat: -1,
-					ease: 'sine.inOut',
-				})
-				gsap.to(ring, {
-					alpha: 0.4,
-					duration: 1.5,
-					yoyo: true,
-					repeat: -1,
-					ease: 'sine.inOut',
-				})
+				// Ring animation removed
 
 				// Restore Remove Button
 				const removeBtn = new Graphics()
-				const btnSize = 24
+				const btnSize = 40
 				removeBtn.circle(0, 0, btnSize / 2)
 				removeBtn.fill({ color: 0xff4d4f, alpha: 0.9 })
-				removeBtn.stroke({ color: 0xffffff, width: 2 })
+				removeBtn.stroke({ color: 0xffffff, width: 3 })
 
 				const xMark = new Text({
 					text: '✕',
 					style: {
 						fontFamily: 'Arial',
-						fontSize: 14,
+						fontSize: 24,
 						fill: 0xffffff,
 						fontWeight: 'bold',
 					},
@@ -1520,16 +1632,68 @@ export async function createHomeScene(w: number, h: number) {
 
 				container.addChild(removeBtn)
 			}
-			;(container as any).userData = {
-				...(container as any).userData,
-				ball: ballSpriteNew,
-				trail: trailSpriteNew,
-				bubble: undefined,
+
+			// Enforce gap consistency
+			if (ballSpriteNew && trailSpriteNew) {
+				// DO NOT manually scale trailSpriteNew here; container is already scaled.
+				// Scaling it again by 's' results in double scaling (s*s).
+
+				const tH =
+					trailSpriteNew.texture.height || trailSpriteNew.height
+				const ballH =
+					ballSpriteNew.texture.height || ballSpriteNew.height
+
+				// Calculate gap in LOCAL coordinates
+				// Desired Visual Gap = YELLOW_GAP_LOCKED (negative for overlap)
+				// Local Gap = YELLOW_GAP_LOCKED / s
+				// trailY (local) = (ballH/2) + (tH/2) + (YELLOW_GAP_LOCKED/s)
+				trailSpriteNew.y =
+					(ballH + tH) / 2 + YELLOW_GAP_LOCKED / scales[i]
+				const newOffset = trailSpriteNew.y + tH / 2
+				;(container as any).userData.trailBottomOffset = newOffset
+
+				// Update container Y
+				container.y = getY(i)
 			}
+
+			// Re-apply hover animation removed
 		} catch (err) {
 			console.error('Home/updateBallSprite error', err)
 		}
 	})
+
+	{
+		const applyConfigured = () => {
+			let configured: Record<string, number> = {}
+			try {
+				configured =
+					JSON.parse(localStorage.getItem('configuredMap') || '{}') ||
+					{}
+			} catch (_) {}
+			const count = Object.values(configured).filter(
+				v => (Number(v) || 0) > 0
+			).length
+			root.emit('readyStatus', count >= 5)
+		}
+
+		applyConfigured()
+		root.on('refreshConfigured', () => applyConfigured())
+
+		// Sync initial state: create bubbles for unconfigured slots, or setup balls for configured ones
+		{
+			let configured: Record<string, number> = {}
+			try {
+				configured =
+					JSON.parse(localStorage.getItem('configuredMap') || '{}') ||
+					{}
+			} catch (_) {}
+			for (let i = 0; i < balls.length; i++) {
+				const color = String(colors[i])
+				// Update all slots. The handler checks configuration and swaps ball/bubble accordingly.
+				root.emit('updateBallSprite', i, color)
+			}
+		}
+	}
 
 	// background alignment unchanged
 
@@ -1544,7 +1708,13 @@ export async function createHomeScene(w: number, h: number) {
 			| undefined
 		if (!ballSprite || !trailSprite) return 0
 		const ballH = ballSprite.texture.height || ballSprite.height
-		return s * (trailSprite.y - ballH / 2)
+		// Gap = Visual Top of Trail - Visual Bottom of Ball
+		// Visual Top of Trail = (trail.y - trailH/2) * s
+		// Visual Bottom of Ball = (ballH/2) * s
+		// We want to return the visual gap in pixels
+		const trailH = trailSprite.texture.height || trailSprite.height
+		const visualGap = s * (trailSprite.y - trailH / 2 - ballH / 2)
+		return visualGap
 	}
 	const setGapTarget = (i: number, target: number) => {
 		const container = balls[i]
@@ -1558,157 +1728,24 @@ export async function createHomeScene(w: number, h: number) {
 		if (!ballSprite || !trailSprite) return
 		const tH = trailSprite.texture.height || trailSprite.height
 		const ballH = ballSprite.texture.height || ballSprite.height
-		const current = s * (trailSprite.y - ballH / 2)
-		const delta = (target - current) / s
-		trailSprite.y += delta
+
+		// Target visual gap = YELLOW_GAP_LOCKED
+		// target = s * (trailY - tH/2 - ballH/2)
+		// target/s = trailY - (tH+ballH)/2
+		// trailY = target/s + (tH+ballH)/2
+
+		trailSprite.y = target / s + (tH + ballH) / 2
+
 		const user = (container as any).userData || {}
 		user.trailBottomOffset = trailSprite.y + tH / 2
 		;(container as any).userData = user
 	}
-	if (!LOCK_POSITIONS) {
-		{
-			const a = getGap(1)
-			const b = getGap(3)
-			const t = Math.round((a + b) / 2)
-			setGapTarget(1, t)
-			setGapTarget(3, t)
-		}
-		{
-			const a = getGap(0)
-			const b = getGap(4)
-			const t = Math.round((a + b) / 2)
-			setGapTarget(0, t)
-			setGapTarget(4, t)
-		}
-	}
-
 	// Force all yellow marker (trail center-to-ball bottom) values to 20px
-	if (!LOCK_POSITIONS) {
-		for (let i = 0; i < balls.length; i++) {
-			setGapTarget(i, YELLOW_GAP_LOCKED)
-		}
+	for (let i = 0; i < balls.length; i++) {
+		setGapTarget(i, YELLOW_GAP_LOCKED)
 	}
 
-	{
-		if (LOCKED_YELLOW_GAPS) {
-			for (let i = 0; i < balls.length; i++) {
-				setGapTarget(i, LOCKED_YELLOW_GAPS[i])
-			}
-		} else {
-			for (let i = 0; i < balls.length; i++) {
-				const current = getGap(i)
-				const target = Math.round(current * 0.1)
-				setGapTarget(i, target)
-			}
-			LOCKED_YELLOW_GAPS = balls.map((_: Container, i: number) =>
-				getGap(i)
-			)
-		}
-	}
-
-	// Collapsible Debug UI
-	{
-		const debugContainer = new Container()
-		debugContainer.visible = false
-		content.addChild(debugContainer)
-
-		const debug = new Graphics()
-		const lefts = xPositions.map((x, i) => x - ballWidths[i] / 2)
-		const rights = xPositions.map((x, i) => x + ballWidths[i] / 2)
-		const labels: Text[] = []
-		for (let i = 0; i < 4; i++) {
-			const yTop = rowY - 140
-			const yBottom = rowY + 140
-			debug.moveTo(rights[i], yTop)
-			debug.lineTo(rights[i], yBottom)
-			debug.moveTo(lefts[i + 1], yTop)
-			debug.lineTo(lefts[i + 1], yBottom)
-			debug.moveTo(rights[i], yTop - 20)
-			debug.lineTo(lefts[i + 1], yTop - 20)
-			const label = new Text({
-				text: `${RED_GAP_LOCKED[i]}px`,
-				style: {
-					fontFamily: 'system-ui',
-					fontSize: 18,
-					fill: 0xff0077,
-				},
-			})
-			label.anchor = 0.5
-			label.x = Math.round((rights[i] + lefts[i + 1]) / 2)
-			label.y = yTop - 36
-			label.roundPixels = true
-			label.resolution = window.devicePixelRatio || 1
-			labels.push(label)
-		}
-		debug.stroke({ color: 0xff0077, alpha: 0.9, width: 3 })
-		debugContainer.addChild(debug)
-		labels.forEach(l => debugContainer.addChild(l))
-
-		const trailDebug = new Graphics()
-		const trailLabels: Text[] = []
-		for (let i = 0; i < balls.length; i++) {
-			const container = balls[i]
-			const s = scales[i]
-			const ballSprite = (container as any).userData?.ball as
-				| Sprite
-				| undefined
-			const trailSprite = (container as any).userData?.trail as
-				| Sprite
-				| undefined
-			if (!ballSprite || !trailSprite) continue
-			const ballH = ballSprite.texture.height || ballSprite.height
-			const ballBottomY = container.y + s * (ballH / 2)
-			const trailCenterY = container.y + s * trailSprite.y
-			const y1 = Math.round(ballBottomY)
-			const y2 = Math.round(trailCenterY)
-			const xLine = Math.round(container.x)
-			trailDebug.moveTo(xLine, y1)
-			trailDebug.lineTo(xLine, y2)
-			const label = new Text({
-				text: `${Math.round(y2 - y1)}px`,
-				style: {
-					fontFamily: 'system-ui',
-					fontSize: 18,
-					fill: 0xffff00,
-				},
-			})
-			label.anchor = 0.5
-			label.x = xLine
-			label.y = Math.round(y1 - 18)
-			label.roundPixels = true
-			label.resolution = window.devicePixelRatio || 1
-			trailLabels.push(label)
-		}
-		trailDebug.stroke({ color: 0xffff00, alpha: 0.9, width: 3 })
-		debugContainer.addChild(trailDebug)
-		trailLabels.forEach(l => debugContainer.addChild(l))
-
-		// Toggle Button
-		const dbgToggle = new Graphics()
-		dbgToggle.roundRect(0, 0, 80, 30, 8)
-		dbgToggle.fill({ color: 0x333333, alpha: 0.8 })
-		dbgToggle.stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
-		dbgToggle.x = DESIGN_W - 100
-		dbgToggle.y = DESIGN_H - 50
-		dbgToggle.eventMode = 'static'
-		dbgToggle.cursor = 'pointer'
-		const dbgText = new Text({
-			text: 'Debug',
-			style: { fontFamily: 'system-ui', fontSize: 14, fill: 0xffffff },
-		})
-		dbgText.anchor = 0.5
-		dbgText.x = dbgToggle.x + 40
-		dbgText.y = dbgToggle.y + 15
-		dbgText.resolution = window.devicePixelRatio || 1
-		content.addChild(dbgToggle)
-		content.addChild(dbgText)
-
-		dbgToggle.on('pointertap', () => {
-			const v = !debugContainer.visible
-			debugContainer.visible = v
-			dbgText.text = v ? 'Hide' : 'Debug'
-		})
-	}
+	// Collapsible Debug UI removed (redundant)
 
 	{
 		for (let i = 0; i < balls.length; i++) {
@@ -1746,25 +1783,7 @@ export async function createHomeScene(w: number, h: number) {
 			})
 			if (ballSprite) {
 				ballSprite.on('pointertap', (ev: any) => {
-					gsap.to(ballSprite.scale, {
-						x: 1.12,
-						y: 1.12,
-						duration: 0.12,
-						ease: 'power2.out',
-						yoyo: true,
-						repeat: 1,
-						overwrite: 'auto',
-						onComplete: () => {
-							gsap.to(ballSprite.scale, {
-								x: 1.03,
-								y: 1.03,
-								yoyo: true,
-								repeat: -1,
-								duration: 2.2 + i * 0.1,
-								ease: 'sine.inOut',
-							})
-						},
-					})
+					// Use standard hover animation removed
 					try {
 						console.log('Home/ball tapped', {
 							index: i,
@@ -1777,21 +1796,8 @@ export async function createHomeScene(w: number, h: number) {
 			}
 			// no bgm trigger on click
 			if (ballSprite) {
-				gsap.to(ballSprite.scale, {
-					x: 1.03,
-					y: 1.03,
-					yoyo: true,
-					repeat: -1,
-					duration: 2.2 + i * 0.1,
-					ease: 'sine.inOut',
-				})
-				gsap.to(ballSprite, {
-					rotation: 0.03,
-					yoyo: true,
-					repeat: -1,
-					duration: 3.2 + i * 0.1,
-					ease: 'sine.inOut',
-				})
+				// Apply standardized hover animation removed
+
 				const shadowTex = makeRadialTexture(
 					512,
 					'rgba(0,0,0,0.35)',
@@ -1807,45 +1813,14 @@ export async function createHomeScene(w: number, h: number) {
 				shadow.x = 0
 				shadow.y = Math.max(ballSprite.height, ballSprite.width) * 0.12
 				shadow.eventMode = 'none'
-				container.addChildAt(shadow, trailSprite ? 1 : 0)
-				gsap.to(shadow, {
-					alpha: 0.22,
-					yoyo: true,
-					repeat: -1,
-					duration: 2.6 + i * 0.1,
-					ease: 'sine.inOut',
-					delay: i * 0.25,
-				})
-				const amp = 18 + (i % 2) * 8
-				const targetY =
-					i % 2 === 0 ? ballSprite.y - amp : ballSprite.y + amp
-				gsap.to(ballSprite, {
-					y: targetY,
-					yoyo: true,
-					repeat: -1,
-					duration: 2.4 + i * 0.2,
-					ease: 'sine.inOut',
-					delay: i * 0.25,
-				})
+				// Insert shadow at bottom (index 0) if possible
+				container.addChildAt(shadow, 0)
+				;(container as any).userData.shadow = shadow
+
+				// Shadow animation removed
 			}
 			if (trailSprite) {
-				gsap.to(trailSprite, {
-					alpha: 0.82,
-					yoyo: true,
-					repeat: -1,
-					duration: 1.6 + i * 0.08,
-					ease: 'sine.inOut',
-					delay: i * 0.1,
-				})
-				gsap.to(trailSprite.scale, {
-					x: 1.06,
-					y: 1.02,
-					yoyo: true,
-					repeat: -1,
-					duration: 2.2 + i * 0.12,
-					ease: 'sine.inOut',
-					delay: i * 0.12,
-				})
+				// Trail animation removed
 			}
 		}
 	}
